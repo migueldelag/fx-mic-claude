@@ -1,0 +1,16 @@
+.build/
+build/
+recordings/
+tools/out/
+.DS_Store
+*.wav.tmp
+
+# Teenage Engineering material stays out of the public repo (their copyright):
+factory-pack/
+firmware/original/
+firmware/backup-*/
+firmware/te/*.zip
+firmware/te/fw_*/
+# generated locally from your own mic's script by tools/build_fxmic_script.py
+firmware/fxmic/main.py
+firmware/fxmic/README.md

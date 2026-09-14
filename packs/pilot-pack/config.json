@@ -1,0 +1,95 @@
+{
+ "name": "CLAUDE PILOT",
+ "samples": [
+  {
+   "pos": 0,
+   "file": "pilot.wav",
+   "playmode": "startstop"
+  },
+  {
+   "pos": 1,
+   "file": "chirp.wav",
+   "playmode": "oneshot"
+  },
+  {
+   "pos": 2,
+   "file": "chirp.wav",
+   "playmode": "oneshot"
+  },
+  {
+   "pos": 3,
+   "file": "chirp.wav",
+   "playmode": "oneshot"
+  }
+ ],
+ "presets": [
+  {
+   "pos": 0,
+   "list": [
+    {
+     "effect": "SAMPLE",
+     "level": 0.35
+    }
+   ],
+   "handle": {
+    "row": 0,
+    "param": "level",
+    "depth": 0.65
+   },
+   "trigger": {
+    "row": 0
+   }
+  },
+  {
+   "pos": 1,
+   "list": [
+    {
+     "effect": "SAMPLE",
+     "level": 0.35
+    }
+   ],
+   "handle": {
+    "row": 0,
+    "param": "level",
+    "depth": 0.65
+   },
+   "trigger": {
+    "row": 0
+   }
+  },
+  {
+   "pos": 2,
+   "list": [
+    {
+     "effect": "SAMPLE",
+     "level": 0.35
+    }
+   ],
+   "handle": {
+    "row": 0,
+    "param": "level",
+    "depth": 0.65
+   },
+   "trigger": {
+    "row": 0
+   }
+  },
+  {
+   "pos": 3,
+   "list": [
+    {
+     "effect": "SAMPLE",
+     "level": 0.35
+    }
+   ],
+   "handle": {
+    "row": 0,
+    "param": "level",
+    "depth": 0.65
+   },
+   "trigger": {
+    "row": 0
+   }
+  }
+ ]
+}
