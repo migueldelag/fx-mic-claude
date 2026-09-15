@@ -137,6 +137,14 @@ Permission: FXMic needs Accessibility (System Settings > Privacy & Security > Ac
 - Sabrent AU-UCMA (USB): works, separate device, speakers unaffected. Appears as "USB Advanced Audio Device".
 - Movo MC3 (TRS to TRRS into the MacBook headphone jack), ordered 2026-09-13: should appear as "External Microphone" if the jack recognizes the line output as a mic; macOS then routes output to the jack too, so speakers must be reselected. Level stays hot (2 Vrms into a mic input), orange knob low. Switch the app's input with the menu's "Input device" picker.
 
+## 2026-09-15: stale recognizer sessions
+
+After the app sat idle overnight, every message came back empty: the recognizer sessions pre-built for the next
+message had gone stale. Sessions older than 120 s are now replaced at the start of a squeeze (audio is buffered
+meanwhile), and they are dropped on hang-up. Recognizer diagnostics are logged. Also logged: the source of every
+hang-up (click, hotkey, menu item, double tap, idle timer, quit), after three unexplained hang-ups a second after
+pick-up on 2026-09-13. Toggle is debounced at 600 ms.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
