@@ -162,8 +162,7 @@ final class AppController {
         capture = nil
         Log.write("idle" + (reason.map { ": \($0)" } ?? ""))
         state = .idle
-        if let reason { hud.flash(reason, detail: "Listening is off. Press ⌃⌥Space or use the menu bar icon.", tint: .gray, icon: "mic.slash", seconds: 2.5) }
-        else { hud.hide() }
+        hud.hide()      // hanging up is silent: the menu bar handset shows the state
     }
 
     /// Keeps speech peaks between -20 and -4 dBFS by nudging the Sabrent's own input gain.
