@@ -78,8 +78,15 @@ final class AppController {
         startSendFileWatcher()
     }
 
-    func toggleArmed() {
-        state == .idle ? arm() : disarm()
+    private var lastToggle = Date.distantPast
+
+    /// Called by the menu bar click and the hotkey. Ignores a second toggle within 600 ms (double-clicks).
+    func toggleArmed(source: String) {
+        let now = Date()
+        guard now.timeIntervalSince(lastToggle) > 0.6 else { Log.write("toggle from \(source) ignored (debounce)"); return }
+        lastToggle = now
+        Log.write("toggle from \(source): \(state == .idle ? "pick up" : "hang up")")
+        state == .idle ? arm() : disarm(reason: "hung up via \(source)")
     }
 
     func arm() {
@@ -330,7 +337,8 @@ final class AppController {
     }
 
     private func handle(_ update: TranscriptUpdate) {
-        // Live text is not shown in the HUD any more; results are consumed in finishUtterance.
+        // Live text is not shown in the HUD; only recognizer diagnostics are logged.
+        if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)") }
     }
 
     // MARK: delivery (main)
@@ -398,7 +406,7 @@ final class AppController {
         Log.write("tap x\(count)\(duringSpeech ? " while squeezed (ignored)" : "")")
         if duringSpeech { return }          // cancel is a shake now; the button does nothing while the handle is in
         lastActivity = Date()
-        if count == 1 { ClaudeApp.toggle() } else { disarm(reason: "Listening off") }
+        if count == 1 { ClaudeApp.toggle() } else { disarm(reason: "double tap") }
     }
 
 

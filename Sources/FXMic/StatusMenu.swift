@@ -136,7 +136,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    @objc private func toggleArmed() { controller.toggleArmed() }
+    @objc private func toggleArmed() { controller.toggleArmed(source: "menu item") }
     @objc private func reloadTargets() { controller.dispatcher.reload() }
     @objc private func selectTarget(_ sender: NSMenuItem) { controller.dispatcher.select(sender.representedObject as? String) }
     @objc private func copyRecent(_ sender: NSMenuItem) {
@@ -152,7 +152,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             sender.performClick(nil)
             item.menu = nil
         } else {
-            controller.toggleArmed()
+            controller.toggleArmed(source: "menu bar click")
         }
     }
 

@@ -47,6 +47,9 @@ public final class LiveTranscriber {
     private var converter: AVAudioConverter?
     private var converterInputFormat: AVAudioFormat?
     private var lanes: [Lane] = []
+    private var lanesCreatedAt = Date.distantPast
+    /// Pre-built lanes older than this are thrown away before use: idle analyzers go stale.
+    public var maxLaneAge: TimeInterval = 120
     private var creating = false
     private var pendingInputs: [AVAudioPCMBuffer] = []     // audio that arrived while the lanes were being built
     private var utteranceSerial = 0
@@ -125,6 +128,7 @@ public final class LiveTranscriber {
         }
         let backlog: [AVAudioPCMBuffer] = stateQueue.sync {
             lanes = fresh
+            lanesCreatedAt = Date()
             creating = false
             let b = pendingInputs
             pendingInputs = []
@@ -155,8 +159,34 @@ public final class LiveTranscriber {
     /// Call when the gate opens. Lanes are normally pre-built; if not, they are built now in the background
     /// and the audio queues up in the streams until they start.
     public func startUtterance() {
+        let stale: [Lane] = stateQueue.sync {
+            guard !lanes.isEmpty, Date().timeIntervalSince(lanesCreatedAt) > maxLaneAge else { return [] }
+            let old = lanes
+            lanes = []
+            return old
+        }
+        if !stale.isEmpty {
+            onUpdate(TranscriptUpdate(locale: "", text: "[stale recognizer sessions replaced]", confidence: 0, isFinal: true))
+            for lane in stale {
+                lane.continuation.finish()
+                lane.resultsTask.cancel()
+                let analyzer = lane.analyzer
+                Task { await analyzer.cancelAndFinishNow() }
+            }
+        }
         let ready = stateQueue.sync { !lanes.isEmpty || creating }
         if !ready { Task { await self.createLanes() } }
+    }
+
+    /// Drops any pre-built lanes (used on hang-up); the next utterance builds fresh ones.
+    public func dropLanes() {
+        let old: [Lane] = stateQueue.sync { let o = lanes; lanes = []; pendingInputs = []; return o }
+        for lane in old {
+            lane.continuation.finish()
+            lane.resultsTask.cancel()
+            let analyzer = lane.analyzer
+            Task { await analyzer.cancelAndFinishNow() }
+        }
     }
 
     /// Feed mono float samples at `sampleRate`. Safe to call from the capture queue.
