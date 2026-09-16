@@ -5,8 +5,9 @@ and your words land in the Claude desktop app as your own message. No cable to t
 pause. A menu bar app on the Mac does the listening and transcription; a small script on the mic's own disk turns the
 handle and a shake into marker tones that ride the audio line.
 
-Built and tested on a MacBook Pro (M4, macOS 26) with an EP-2350 on OS 1.1.2 connected through a Sabrent AU-UCMA
-USB audio adapter. Personal project, MIT licensed. Nothing from Teenage Engineering is redistributed here.
+Built and tested on a MacBook Pro (M4, macOS 26) with an EP-2350 on OS 1.1.2, connected either through a TRS-to-TRRS
+adapter into the headphone jack or through a Sabrent AU-UCMA USB audio adapter. Personal project, MIT licensed.
+Nothing from Teenage Engineering is redistributed here.
 
 ## What it does
 
@@ -17,7 +18,7 @@ USB audio adapter. Personal project, MIT licensed. Nothing from Teenage Engineer
 | tap the play button, handle released | the Claude window comes forward; tap again to go back |
 | two quick taps, handle released | the app hangs up (stops listening, orange dot off) |
 | left-click the menu bar handset | pick up or hang up |
-| right-click the menu bar handset | menu: input device, delivery mode, launch at login, test message |
+| right-click the menu bar handset | menu: stop/start listening, shake to cancel, input device, launch at login |
 | `⌃⌥Space` | pick up or hang up |
 
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
@@ -48,13 +49,20 @@ disk at boot in place of the built-in startup. So:
 `PLAN.md` is the engineering log with every measurement and dead end (pilot tones, hold playmode, silence timeouts,
 the boot-order discovery and the crash it caused).
 
-## Hardware
+## What you need
 
-- Teenage Engineering EP-2350 FX mic, OS 1.1.2.
-- A mic-level audio input on the Mac. The Sabrent AU-UCMA USB adapter works and keeps the Mac's speakers untouched.
-  A TRS-to-TRRS adapter into the headphone jack may also work but makes macOS route sound output to the jack.
-- A USB-C data cable for the mic, needed only when installing the script.
-- The mic's line out is 2 Vrms; keep its orange volume knob low. The app trims the input gain after each message.
+- A Teenage Engineering EP-2350 FX mic (tested on OS 1.1.2) with two AAA batteries.
+- A Mac running macOS 26 with the Xcode command line tools installed (`xcode-select --install`).
+- A way to feed the mic's 3.5 mm line output into the Mac as a microphone input. Two options are tested:
+
+| option | what it is | pros | cons |
+| --- | --- | --- | --- |
+| **Headphone jack** (Miguel's daily setup) | a TRS-to-TRRS adapter such as the Movo MC3 from the mic's 3.5 mm cable straight into the MacBook's headphone jack | nothing else to carry, no USB port used, shows up as "External Microphone" | the moment it is plugged in, macOS also moves sound **output** to the jack, so pick "MacBook Pro Speakers" again under System Settings > Sound > Output (or in the Control Center sound menu). Once per plug-in. |
+| **USB audio adapter** | a USB-C dongle with a 3.5 mm mic input, such as the Sabrent AU-UCMA, shows up as "USB Advanced Audio Device" | speakers untouched, works on any Mac | one more dongle and a USB-C port |
+
+- A USB-C data cable for the mic, needed only while installing the script on the mic (a couple of minutes, once).
+- The mic's line out is loud (2 Vrms). Set its orange volume knob under the lid low. The app trims the input gain
+  after each message and both adapters ended up in the right range on their own.
 
 ## Setup
 
@@ -69,8 +77,10 @@ open ~/Applications/FXMic.app
 ```
 
 On first launch grant Microphone when asked, then use the menu's "Grant Accessibility access…" (System Settings >
-Privacy & Security > Accessibility) so messages can go into Claude's composer. "Launch at login" is in the same menu.
-Pick your audio input under "Input device" if it is not the Sabrent.
+Privacy & Security > Accessibility) so messages can go into Claude's composer. Right-click the handset for the menu:
+Start/Stop listening, Shake to cancel, Input device, Launch at login. Under "Input device" pick "External Microphone"
+for the headphone-jack adapter or "USB Advanced Audio Device" for the Sabrent; picking one starts listening on it.
+Left-click the handset to hang up or pick up.
 
 The recognizer models for en-US and es-MX are installed on first use by the app (Apple system assets). Change the
 locales with `defaults write com.miguel.fxmic locales -array en-US es-MX`.
@@ -116,10 +126,13 @@ Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log a
 ## Troubleshooting and recovery
 
 - **Nothing happens when you squeeze**: the app is idle (left-click the handset), or the input device is wrong
-  (right-click, "Input device"), or the mic script is not installed (`tools/install_disk.sh install`).
+  (right-click, "Input device": "External Microphone" for the jack adapter, "USB Advanced Audio Device" for the
+  Sabrent), or the mic script is not installed (`tools/install_disk.sh install`).
+- **No sound from the Mac after plugging the jack adapter in**: macOS moved output to the jack. System Settings >
+  Sound > Output > MacBook Pro Speakers.
 - **Messages arrive as system notes instead of your bubbles**: Accessibility is not granted, or the Claude window is
   closed. Check `~/.fxmic/fxmic.log` for "composer delivery failed".
-- **False cancels**: the shake rule needs four alternating swings of at least half a g within 450 ms. Tune
+- **False cancels or shakes not registering**: the shake rule needs three alternating swings of about 0.4 g within 550 ms, and it can be switched off in the menu. Tune
   `SHAKE_DEV`, `SHAKE_EXCURSIONS`, `SHAKE_WINDOW` in `tools/build_fxmic_script.py` and reinstall.
 - **The mic does not start after a bad script**: hold the handle and double-click the small button above the USB port,
   drag `firmware/te/escape_blank_disk.uf2` onto the "FX MIC BOOT" drive. The disk is reformatted at the next start
