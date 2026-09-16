@@ -184,7 +184,7 @@ final class AppController {
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             guard let self, self.state != .idle else { return }
             let limit = self.settings.idleMinutes * 60
-            if limit > 0, Date().timeIntervalSince(self.lastActivity) > limit {
+            if limit > 0, self.state != .listening, !self.handleMode, Date().timeIntervalSince(self.lastActivity) > limit {   // never mid-message
                 self.disarm(reason: "Idle after \(Int(self.settings.idleMinutes)) min")
             }
         }
@@ -259,11 +259,7 @@ final class AppController {
                 utterancePeak = max(utterancePeak, Levels.peakDb(frame))
             }
             transcriber?.feed(frame, sampleRate: sampleRate)
-            if Double(openFrames) * hopSeconds > 90 {   // hard cap for a stuck handle
-                Log.write("utterance cap reached, forcing close")
-                endUtterance(frames: openFrames)
-                gate.forceRelease()
-            }
+            // No time cap: a message ends only on the release marker or a shake.
             if Date().timeIntervalSince(lastLevelPush) > 0.05 {
                 lastLevelPush = Date()
                 DispatchQueue.main.async { self.hud.model.level = rms }
