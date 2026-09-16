@@ -261,9 +261,9 @@ final class AppController {
             }
             transcriber?.feed(frame, sampleRate: sampleRate)
             // No time cap: a message ends only on the release marker or a shake.
-            // Meter ballistics: instant attack, about 60 dB/s release, pushed to the HUD at ~60 Hz.
-            meterLevel = max(rms, meterLevel - 0.6)
-            if Date().timeIntervalSince(lastLevelPush) > 0.016 {
+            // Meter ballistics: instant attack, about 150 dB/s release, pushed to the HUD on every 10 ms hop.
+            meterLevel = max(rms, meterLevel - 1.5)
+            if Date().timeIntervalSince(lastLevelPush) > 0.009 {
                 lastLevelPush = Date()
                 let shown = meterLevel
                 DispatchQueue.main.async { self.hud.model.level = shown }

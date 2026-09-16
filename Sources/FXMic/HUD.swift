@@ -30,7 +30,7 @@ struct HUDView: View {
                         Capsule().fill(Color.primary.opacity(0.1))
                         Capsule().fill(model.tint)
                             .frame(width: geo.size.width * CGFloat(model.showMeter ? max(0, min(1, (model.level + 60) / 54)) : 0))
-                            .animation(.linear(duration: 0.05), value: model.level)
+                            .animation(.linear(duration: 0.03), value: model.level)
                     }
                 }.frame(width: 150, height: 6)
             }
