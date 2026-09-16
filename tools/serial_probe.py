@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Read-only probe of the EP-2350 console: dump /rom docs and main.py, sample getters, stream changes for 60 s."""
 import os, select, subprocess, sys, time, glob
-PORT = (glob.glob("/dev/cu.usbmodemEPXYW*") or ["/dev/cu.usbmodemEPXYW3YH1"])[0]
+_ports = sorted(glob.glob("/dev/cu.usbmodem*"))
+PORT = next((p for p in _ports if "EP" in p), _ports[0] if _ports else "/dev/cu.usbmodem-missing")
 subprocess.run(["stty", "-f", PORT, "115200", "raw", "-echo", "clocal"], check=False)
 fd = os.open(PORT, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 def read_for(seconds, live=False):

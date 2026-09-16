@@ -4,8 +4,9 @@
 import os, select, subprocess, sys, time, glob
 
 def open_port():
-    port = (glob.glob("/dev/cu.usbmodemEPXYW*") or [None])[0]
-    if not port: sys.exit("no EP-2350 serial port")
+    ports = sorted(glob.glob("/dev/cu.usbmodem*"))
+    port = next((p for p in ports if "EP" in p), ports[0] if ports else None)
+    if not port: sys.exit("no EP-2350 serial port: is the mic on and connected with a USB-C data cable?")
     subprocess.run(["stty", "-f", port, "115200", "raw", "-echo", "clocal"], check=False)
     return os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 

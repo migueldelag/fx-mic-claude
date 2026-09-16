@@ -3,7 +3,8 @@
 usage: tools/repl.py "expr" ["expr" ...]   (each is sent as one line; response window 1.5 s)"""
 import os, select, sys, time, glob, subprocess
 
-PORT = (glob.glob("/dev/cu.usbmodemEPXYW*") or ["/dev/cu.usbmodemEPXYW3YH1"])[0]
+_ports = sorted(glob.glob("/dev/cu.usbmodem*"))
+PORT = next((p for p in _ports if "EP" in p), _ports[0] if _ports else "/dev/cu.usbmodem-missing")
 subprocess.run(["stty", "-f", PORT, "115200", "raw", "-echo", "clocal"], check=False)
 fd = os.open(PORT, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 

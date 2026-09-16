@@ -165,7 +165,7 @@ activating the app, and the active session can be read from the header button de
 
 - 2026-09-15 23:25 to 23:40: HUD is one toast that slides down from the top edge on squeeze (180 ms) and back up when done (150 ms), relabels in place without text animation (Listening, Sending… with an up arrow, Sent, Canceled); meter pushed every 10 ms hop with instant attack and ~150 dB/s release, 30 ms bar animation.
 
-- 2026-09-15 23:50: two notification toasts driven by the target session's sidebar label ("Running <title>" / "Idle <title>", polled through Accessibility by `ActivityWatcher`): "Received · thinking" (2 s, after the mic toast has left) and "Task done · press play or click here" (6 s, 0.5 s after the previous toast, only when Claude is not the front app; click or the play button brings Claude forward). The thinking toast waits 1.5 s after the mic toast has left. Neither shows the meter; each is its own slide-in/slide-out.
+- 2026-09-15 23:50 to 2026-09-16 00:06: session activity is read from the target session's sidebar label ("Running <title>" / "Idle <title>", polled through Accessibility by `ActivityWatcher`). Two notification toasts were tried and removed at Miguel's request; progress shows on the menu bar icon instead: three pulsing dots badge the handset's upper-right corner while the session runs, then a check for two seconds, drawn inside the same 18-point icon with a knocked-out outline.
 
 ## Open items
 
