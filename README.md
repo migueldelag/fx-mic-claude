@@ -22,8 +22,8 @@ Nothing from Teenage Engineering is redistributed here.
 | `⌃⌥Space` | pick up or hang up |
 
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
-squeeze, which is when the mic turns itself off too. A small HUD at the top of the screen shows "Listening" with a
-level meter while you squeeze, then "Sent" or "Canceled"; it never takes focus.
+squeeze, which is when the mic turns itself off too. A small toast slides down from the top of the screen while you squeeze, showing "Listening" and a level
+meter, switches to "Sending…" when you release and "Sent" when it lands, then slides away; it never takes focus.
 
 ## How it works
 

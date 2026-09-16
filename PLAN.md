@@ -163,6 +163,8 @@ activating the app, and the active session can be read from the header button de
 `claude://code/continue?session=<local id>` also exists but activates the window. Verified: a message sent to
 "mic test session" while another session was on screen landed there, and the next one came back to the original.
 
+- 2026-09-15 23:25: HUD is one toast that slides down from the top edge on squeeze, relabels in place (Listening, Sending…, Sent or Canceled) and slides back up; meter pushed at 60 Hz with instant attack and ~60 dB/s release.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
