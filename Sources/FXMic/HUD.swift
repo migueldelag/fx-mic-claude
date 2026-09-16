@@ -27,14 +27,16 @@ struct HUDView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).textCase(.uppercase)
                     .transaction { $0.animation = nil }      // label swaps instantly; no blending of two words
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.1))
-                        Capsule().fill(model.tint)
-                            .frame(width: geo.size.width * CGFloat(model.showMeter ? max(0, min(1, (model.level + 60) / 54)) : 0))
-                            .animation(.linear(duration: 0.03), value: model.level)
-                    }
-                }.frame(width: 150, height: 6)
+                if model.showMeter {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.1))
+                            Capsule().fill(model.tint)
+                                .frame(width: geo.size.width * CGFloat(max(0, min(1, (model.level + 60) / 54))))
+                                .animation(.linear(duration: 0.03), value: model.level)
+                        }
+                    }.frame(width: 150, height: 6)
+                }
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -103,8 +105,11 @@ final class HUDController {
         }
     }
 
+    private var hideCompletesAt: Date?
+
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
+        hideCompletesAt = Date().addingTimeInterval(delay + 0.15)
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.panel.isVisible else { return }
             NSAnimationContext.runAnimationGroup({ ctx in
@@ -112,10 +117,20 @@ final class HUDController {
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 self.panel.animator().setFrame(self.hiddenFrame, display: true)
                 self.panel.animator().alphaValue = 0
-            }) { self.panel.orderOut(nil) }
+            }) { self.panel.orderOut(nil); self.hideCompletesAt = nil }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Runs `present` as a separate toast: after the current one has finished sliding away.
+    private func asNewToast(_ present: @escaping () -> Void) {
+        guard panel.isVisible else { present(); return }
+        let wait = max(0.05, hideCompletesAt?.timeIntervalSinceNow ?? 0.3) + 0.1
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            if self.panel.isVisible { self.asNewToast(present) } else { present() }
+        }
     }
 
     func listening(target: String) {
@@ -150,27 +165,34 @@ final class HUDController {
         hide(after: 0.8)
     }
 
-    /// Claude picked the message up and is working. Two seconds, then away.
+    /// Claude picked the message up and is working: its own toast, no meter, two seconds.
     func thinking() {
-        panel.ignoresMouseEvents = true
-        model.title = "Thinking"
-        model.tint = .blue
-        model.icon = "ellipsis.bubble.fill"
-        model.level = -60
-        show()
-        hide(after: 2.0)
+        asNewToast { [weak self] in
+            guard let self else { return }
+            self.panel.ignoresMouseEvents = true
+            self.model.onTap = nil
+            self.model.showMeter = false
+            self.model.title = "Received · thinking"
+            self.model.tint = .blue
+            self.model.icon = "ellipsis.bubble.fill"
+            self.show()
+            self.hide(after: 2.0)
+        }
     }
 
-    /// Claude finished while another app was in front. Clickable, and the play button opens Claude too.
+    /// Claude finished while another app was in front: its own toast, clickable; the play button opens Claude too.
     func done(onTap: @escaping () -> Void) {
-        model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
-        panel.ignoresMouseEvents = false
-        model.title = "Done · press play or click"
-        model.tint = .green
-        model.icon = "checkmark.message.fill"
-        model.level = -60
-        show()
-        hide(after: 6.0)
+        asNewToast { [weak self] in
+            guard let self else { return }
+            self.model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
+            self.panel.ignoresMouseEvents = false
+            self.model.showMeter = false
+            self.model.title = "Done · press play or click"
+            self.model.tint = .green
+            self.model.icon = "checkmark.message.fill"
+            self.show()
+            self.hide(after: 6.0)
+        }
     }
 
     func canceled() {
