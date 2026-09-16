@@ -39,28 +39,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        // 1. listening toggle
         let toggle = NSMenuItem(title: controller.state == .idle ? "Start listening" : "Stop listening", action: #selector(toggleArmed), keyEquivalent: "")
         toggle.target = self
         menu.addItem(toggle)
-        menu.addItem(.separator())
 
-        let targetMenu = NSMenu()
-        let recent = SessionStore.recent(limit: 5)
-        let effective = Settings.shared.targetSessionTitle ?? recent.first?.title
-        for session in recent {
-            let item = NSMenuItem(title: session.title, action: #selector(selectTarget(_:)), keyEquivalent: "")
-            item.target = self; item.representedObject = session.title
-            item.state = session.title == effective ? .on : .off
-            targetMenu.addItem(item)
-        }
-        let targetItem = NSMenuItem(title: "Target: \(effective ?? "current session")", action: nil, keyEquivalent: "")
-        targetItem.submenu = targetMenu
-        menu.addItem(targetItem)
-
-        let shake = NSMenuItem(title: "Shake to cancel", action: #selector(toggleShake), keyEquivalent: "")
-        shake.target = self; shake.state = Settings.shared.shakeToCancel ? .on : .off
-        menu.addItem(shake)
-
+        // 2. input device
         let deviceMenu = NSMenu()
         let currentDevice = Settings.shared.deviceQuery
         for dev in AudioDevices.inputs() {
@@ -72,19 +56,40 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let deviceItem = NSMenuItem(title: "Input device", action: nil, keyEquivalent: "")
         deviceItem.submenu = deviceMenu
         menu.addItem(deviceItem)
+        menu.addItem(.separator())
 
+        // 3. target session, shown by (truncated) name
+        let targetMenu = NSMenu()
+        let recent = SessionStore.recent(limit: 5)
+        let effective = Settings.shared.targetSessionTitle ?? recent.first?.title
+        for session in recent {
+            let item = NSMenuItem(title: session.title, action: #selector(selectTarget(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = session.title
+            item.state = session.title == effective ? .on : .off
+            targetMenu.addItem(item)
+        }
+        let shown = effective.map { $0.count > 24 ? String($0.prefix(24)).trimmingCharacters(in: .whitespaces) + "…" : $0 } ?? "current session"
+        let targetItem = NSMenuItem(title: "Target: \(shown)", action: nil, keyEquivalent: "")
+        targetItem.submenu = targetMenu
+        menu.addItem(targetItem)
+        menu.addItem(.separator())
+
+        // 4. options
+        let shake = NSMenuItem(title: "Shake to cancel", action: #selector(toggleShake), keyEquivalent: "")
+        shake.target = self; shake.state = Settings.shared.shakeToCancel ? .on : .off
+        menu.addItem(shake)
         let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self; login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.isEnabled = Bundle.main.bundleIdentifier != nil
         menu.addItem(login)
-
         if !ComposerDelivery.isTrusted {
             let grant = NSMenuItem(title: "Grant Accessibility access…", action: #selector(grantAccessibility), keyEquivalent: "")
             grant.target = self
             menu.addItem(grant)
         }
-
         menu.addItem(.separator())
+
+        // 5. quit
         let quitItem = NSMenuItem(title: "Quit FXMic", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
