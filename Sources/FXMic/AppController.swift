@@ -33,6 +33,7 @@ final class AppController {
     let settings = Settings.shared
     let hud = HUDController()
     let dispatcher = Dispatcher()
+    private let activity = ActivityWatcher()
     private(set) var recent: [(date: Date, text: String, outcome: String)] = []
     private(set) var lastError: String?
     var deviceName: String? { capture?.device.name }
@@ -303,6 +304,7 @@ final class AppController {
         transcriber?.startUtterance()
         for f in preroll.dropLast() { transcriber?.feed(f, sampleRate: sampleRate) }
         state = .listening
+        activity.cancel()
         DispatchQueue.main.async { self.showListeningIfNeeded() }
     }
 
@@ -369,6 +371,16 @@ final class AppController {
                 try ComposerDelivery.send(text, toSessionTitled: target)
                 outcome = target.map { "Sent to \($0)" } ?? "Sent to Claude"
                 if settings.targetSessionTitle != nil { settings.targetSessionTitle = nil }   // it is the last used now
+                if let target {
+                    activity.watch(sessionTitle: target, onThinking: { [weak self] in
+                        Log.write("activity: \(target) is thinking")
+                        self?.hud.thinking()
+                    }, onDone: { [weak self] in
+                        let claudeInFront = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == ClaudeApp.bundleID
+                        Log.write("activity: \(target) done\(claudeInFront ? " (Claude in front, no toast)" : "")")
+                        if !claudeInFront { self?.hud.done { ClaudeApp.toggle() } }
+                    })
+                }
             } catch {
                 Log.write("composer delivery failed (\(error)), using the inbox")
                 outcome = inboxOutcome(text: text, result: result, speechSeconds: speechSeconds)

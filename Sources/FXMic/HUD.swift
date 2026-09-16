@@ -10,6 +10,7 @@ final class HUDModel: ObservableObject {
     @Published var tint: Color = .orange
     @Published var icon = "mic.fill"
     @Published var showMeter = true
+    var onTap: (() -> Void)?
 }
 
 struct HUDView: View {
@@ -40,6 +41,8 @@ struct HUDView: View {
         .frame(width: 260, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture { model.onTap?() }
     }
 }
 
@@ -116,6 +119,8 @@ final class HUDController {
     }
 
     func listening(target: String) {
+        panel.ignoresMouseEvents = true
+        model.onTap = nil
         suppressPartials = false
         model.title = "Listening"
         model.tint = .yellow
@@ -126,8 +131,6 @@ final class HUDController {
     }
 
     func partial(_ text: String) {}          // the transcript is not shown
-
-    func thinking() {}
 
     /// Handle released, transcript being finalized and typed: same toast, new label.
     func sending() {
@@ -145,6 +148,29 @@ final class HUDController {
         model.level = -60
         show()
         hide(after: 0.8)
+    }
+
+    /// Claude picked the message up and is working. Two seconds, then away.
+    func thinking() {
+        panel.ignoresMouseEvents = true
+        model.title = "Thinking"
+        model.tint = .blue
+        model.icon = "ellipsis.bubble.fill"
+        model.level = -60
+        show()
+        hide(after: 2.0)
+    }
+
+    /// Claude finished while another app was in front. Clickable, and the play button opens Claude too.
+    func done(onTap: @escaping () -> Void) {
+        model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
+        panel.ignoresMouseEvents = false
+        model.title = "Done · press play or click"
+        model.tint = .green
+        model.icon = "checkmark.message.fill"
+        model.level = -60
+        show()
+        hide(after: 6.0)
     }
 
     func canceled() {
