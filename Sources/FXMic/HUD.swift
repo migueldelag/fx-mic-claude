@@ -186,7 +186,7 @@ final class HUDController {
             self.model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
             self.panel.ignoresMouseEvents = false
             self.model.showMeter = false
-            self.model.title = "Task done · press play or click here"
+            self.model.title = "Task done · play button on mic or press here"
             self.model.tint = .green
             self.model.icon = "checkmark.message.fill"
             self.show()

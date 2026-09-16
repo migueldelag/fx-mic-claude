@@ -3,7 +3,60 @@ import FXMicCore
 import ServiceManagement
 
 final class StatusMenu: NSObject, NSMenuDelegate {
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+
+    enum Activity { case none, thinking, done }
+    private var activity: Activity = .none
+    private var dotTimer: Timer?
+    private var dotPhase = 0
+    private var doneReset: DispatchWorkItem?
+
+    /// Draws the handset with optional dots (task in progress) or a check (task done), as a template image.
+    private static func compose(base: String, dots: Int = 0, check: Bool = false) -> NSImage {
+        let extra: CGFloat = (dots > 0 || check) ? 14 : 0
+        let size = NSSize(width: 18 + extra, height: 18)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            if let phone = NSImage(systemSymbolName: base, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+                let pr = NSRect(x: (18 - phone.size.width) / 2, y: (18 - phone.size.height) / 2, width: phone.size.width, height: phone.size.height)
+                phone.draw(in: pr)
+            }
+            NSColor.black.setFill()
+            for i in 0..<dots {
+                NSBezierPath(ovalIn: NSRect(x: 19 + CGFloat(i) * 4.5, y: 7.5, width: 3, height: 3)).fill()
+            }
+            if check, let mark = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)) {
+                mark.draw(in: NSRect(x: 19, y: (18 - mark.size.height) / 2, width: mark.size.width, height: mark.size.height))
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    /// Task-progress decoration on the icon: dots while Claude works, a check for two seconds when it finishes.
+    func setActivity(_ a: Activity) {
+        activity = a
+        dotTimer?.invalidate(); dotTimer = nil
+        doneReset?.cancel(); doneReset = nil
+        switch a {
+        case .thinking:
+            dotPhase = 0
+            dotTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.dotPhase = (self.dotPhase % 3) + 1
+                self.refresh()
+            }
+        case .done:
+            let reset = DispatchWorkItem { [weak self] in self?.setActivity(.none) }
+            doneReset = reset
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: reset)
+        case .none:
+            break
+        }
+        refresh()
+    }
     private unowned let controller: AppController
     private let menu = NSMenu()
 
@@ -29,10 +82,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         case .armed: symbol = Settings.shared.iconArmed
         case .listening: symbol = Settings.shared.iconListening
         }
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "FXMic")?
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .medium))
-        image?.isTemplate = true
-        item.button?.image = image
+        switch activity {
+        case .thinking: item.button?.image = StatusMenu.compose(base: symbol, dots: max(1, dotPhase))
+        case .done: item.button?.image = StatusMenu.compose(base: symbol, check: true)
+        case .none: item.button?.image = StatusMenu.compose(base: symbol)
+        }
         item.button?.toolTip = "FXMic: \(controller.state.rawValue). Click to \(controller.state == .idle ? "pick up" : "hang up"), right-click for the menu."
     }
 

@@ -28,6 +28,7 @@ final class AppController {
         ])
     }
     var onStateChange: (() -> Void)?
+    var onActivity: ((StatusMenu.Activity) -> Void)?
     var onRecentChange: (() -> Void)?
 
     let settings = Settings.shared
@@ -305,6 +306,7 @@ final class AppController {
         for f in preroll.dropLast() { transcriber?.feed(f, sampleRate: sampleRate) }
         state = .listening
         activity.cancel()
+        DispatchQueue.main.async { self.onActivity?(.none) }
         DispatchQueue.main.async { self.showListeningIfNeeded() }
     }
 
@@ -375,10 +377,12 @@ final class AppController {
                     activity.watch(sessionTitle: target, onThinking: { [weak self] in
                         Log.write("activity: \(target) is thinking")
                         self?.hud.thinking()
+                        self?.onActivity?(.thinking)
                     }, onDone: { [weak self] in
                         let claudeInFront = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == ClaudeApp.bundleID
                         Log.write("activity: \(target) done\(claudeInFront ? " (Claude in front, no toast)" : "")")
                         if !claudeInFront { self?.hud.done { ClaudeApp.toggle() } }
+                        self?.onActivity?(.done)
                     })
                 }
             } catch {
