@@ -42,6 +42,8 @@ final class Settings {
     var iconIdle: String { d.string(forKey: "iconIdle") ?? "phone.down.fill" }
     var iconArmed: String { d.string(forKey: "iconArmed") ?? "phone.fill" }
     var iconListening: String { d.string(forKey: "iconListening") ?? "phone.and.waveform.fill" }
+    /// Title of the Claude session that receives messages; nil means whatever session was used last.
+    var targetSessionTitle: String? { get { d.string(forKey: "targetSessionTitle") } set { d.set(newValue, forKey: "targetSessionTitle") } }
     var shakeToCancel: Bool { get { d.bool(forKey: "shakeToCancel") } set { d.set(newValue, forKey: "shakeToCancel") } }
     var composerDelivery: Bool { get { d.bool(forKey: "composerDelivery") } set { d.set(newValue, forKey: "composerDelivery") } }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }

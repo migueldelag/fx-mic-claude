@@ -44,6 +44,22 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(toggle)
         menu.addItem(.separator())
 
+        let targetMenu = NSMenu()
+        let chosen = Settings.shared.targetSessionTitle
+        let lastUsed = NSMenuItem(title: "Last used", action: #selector(selectTarget(_:)), keyEquivalent: "")
+        lastUsed.target = self; lastUsed.representedObject = ""; lastUsed.state = chosen == nil ? .on : .off
+        targetMenu.addItem(lastUsed)
+        targetMenu.addItem(.separator())
+        for session in SessionStore.recent(limit: 5) {
+            let item = NSMenuItem(title: session.title, action: #selector(selectTarget(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = session.title
+            item.state = session.title == chosen ? .on : .off
+            targetMenu.addItem(item)
+        }
+        let targetItem = NSMenuItem(title: "Target: \(chosen ?? "last used")", action: nil, keyEquivalent: "")
+        targetItem.submenu = targetMenu
+        menu.addItem(targetItem)
+
         let shake = NSMenuItem(title: "Shake to cancel", action: #selector(toggleShake), keyEquivalent: "")
         shake.target = self; shake.state = Settings.shared.shakeToCancel ? .on : .off
         menu.addItem(shake)
@@ -90,6 +106,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
+    @objc private func selectTarget(_ sender: NSMenuItem) {
+        let title = sender.representedObject as? String ?? ""
+        Settings.shared.targetSessionTitle = title.isEmpty ? nil : title
+        Log.write("target: \(title.isEmpty ? "last used" : title)")
+        controller.snapshot()
+    }
     @objc private func toggleShake() { Settings.shared.shakeToCancel.toggle(); controller.snapshot() }
     @objc private func selectDevice(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
