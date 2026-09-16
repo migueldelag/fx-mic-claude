@@ -18,7 +18,7 @@ Nothing from Teenage Engineering is redistributed here.
 | tap the play button, handle released | the Claude window comes forward; tap again to go back |
 | two quick taps, handle released | the app hangs up (stops listening, orange dot off) |
 | left-click the menu bar handset | pick up or hang up |
-| right-click the menu bar handset | menu: stop/start listening, shake to cancel, input device, launch at login |
+| right-click the menu bar handset | menu: stop/start listening, target session, shake to cancel, input device, launch at login |
 | `⌃⌥Space` | pick up or hang up |
 
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
@@ -79,7 +79,9 @@ open ~/Applications/FXMic.app
 
 On first launch grant Microphone when asked, then use the menu's "Grant Accessibility access…" (System Settings >
 Privacy & Security > Accessibility) so messages can go into Claude's composer. Right-click the handset for the menu:
-Start/Stop listening, Shake to cancel, Input device, Launch at login. Under "Input device" pick "External Microphone"
+Start/Stop listening, Target, Shake to cancel, Input device, Launch at login. "Target" lists your five most recently
+used Claude sessions; pick one and messages go there even while another session is on screen (the app switches the
+sidebar row before typing, no focus change). "Last used", the default, types into whatever session is open. Under "Input device" pick "External Microphone"
 for the headphone-jack adapter or "USB Advanced Audio Device" for the Sabrent; picking one starts listening on it.
 Left-click the handset to hang up or pick up.
 

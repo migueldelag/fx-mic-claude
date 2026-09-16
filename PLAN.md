@@ -153,6 +153,16 @@ pick-up on 2026-09-13. Toggle is debounced at 600 ms.
 
 - 2026-09-15 20:33: a 44 s message was cut by the 90 s utterance cap. Cap removed; the idle timer skips while a message is open. A message ends only on release or a shake.
 
+## Target sessions (2026-09-15 evening)
+
+The desktop app keeps one JSON per Code session under `~/Library/Application Support/Claude/claude-code-sessions/`
+(`sessionId` = `local_…`, `title`, `lastFocusedAt`, `isArchived`); those ids differ from the CLI session uuids in
+`~/.claude/projects`. The Target menu lists the five most recently focused. Switching is done through the sidebar:
+each session is an `AXButton` titled "Idle <title>" or "Running <title>"; AXPress on it changes the view without
+activating the app, and the active session can be read from the header button described "<title>, rename session".
+`claude://code/continue?session=<local id>` also exists but activates the window. Verified: a message sent to
+"mic test session" while another session was on screen landed there, and the next one came back to the original.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
