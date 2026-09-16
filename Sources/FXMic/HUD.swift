@@ -10,7 +10,6 @@ final class HUDModel: ObservableObject {
     @Published var tint: Color = .orange
     @Published var icon = "mic.fill"
     @Published var showMeter = true
-    var onTap: (() -> Void)?
 }
 
 struct HUDView: View {
@@ -43,8 +42,6 @@ struct HUDView: View {
         .frame(width: 260, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .onTapGesture { model.onTap?() }
     }
 }
 
@@ -105,11 +102,9 @@ final class HUDController {
         }
     }
 
-    private var hideCompletesAt: Date?
 
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
-        hideCompletesAt = Date().addingTimeInterval(delay + 0.15)
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.panel.isVisible else { return }
             NSAnimationContext.runAnimationGroup({ ctx in
@@ -117,24 +112,14 @@ final class HUDController {
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 self.panel.animator().setFrame(self.hiddenFrame, display: true)
                 self.panel.animator().alphaValue = 0
-            }) { self.panel.orderOut(nil); self.hideCompletesAt = nil }
+            }) { self.panel.orderOut(nil) }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    /// Runs `present` as a separate toast: `gap` seconds after the current one has finished sliding away.
-    private func asNewToast(gap: TimeInterval, _ present: @escaping () -> Void) {
-        let remaining = panel.isVisible ? max(0.05, hideCompletesAt?.timeIntervalSinceNow ?? 0.3) : 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + remaining + gap) { [weak self] in
-            guard let self else { return }
-            if self.panel.isVisible { self.asNewToast(gap: 0.3, present) } else { present() }
-        }
-    }
-
+    /// Handle released, transcript being finalized and typed: same toast, new label.
     func listening(target: String) {
-        panel.ignoresMouseEvents = true
-        model.onTap = nil
         suppressPartials = false
         model.title = "Listening"
         model.tint = .yellow
@@ -146,7 +131,6 @@ final class HUDController {
 
     func partial(_ text: String) {}          // the transcript is not shown
 
-    /// Handle released, transcript being finalized and typed: same toast, new label.
     func sending() {
         model.title = "Sending…"
         model.icon = "arrow.up"
@@ -162,36 +146,6 @@ final class HUDController {
         model.level = -60
         show()
         hide(after: 0.8)
-    }
-
-    /// Claude picked the message up and is working: its own toast, no meter, two seconds.
-    func thinking() {
-        asNewToast(gap: 1.5) { [weak self] in
-            guard let self else { return }
-            self.panel.ignoresMouseEvents = true
-            self.model.onTap = nil
-            self.model.showMeter = false
-            self.model.title = "Received · thinking"
-            self.model.tint = .blue
-            self.model.icon = "ellipsis.bubble.fill"
-            self.show()
-            self.hide(after: 2.0)
-        }
-    }
-
-    /// Claude finished while another app was in front: its own toast, clickable; the play button opens Claude too.
-    func done(onTap: @escaping () -> Void) {
-        asNewToast(gap: 0.5) { [weak self] in
-            guard let self else { return }
-            self.model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
-            self.panel.ignoresMouseEvents = false
-            self.model.showMeter = false
-            self.model.title = "Task done · play button on mic or press here"
-            self.model.tint = .green
-            self.model.icon = "checkmark.message.fill"
-            self.show()
-            self.hide(after: 6.0)
-        }
     }
 
     func canceled() {

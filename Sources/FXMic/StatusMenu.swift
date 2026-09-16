@@ -3,7 +3,7 @@ import FXMicCore
 import ServiceManagement
 
 final class StatusMenu: NSObject, NSMenuDelegate {
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
     enum Activity { case none, thinking, done }
     private var activity: Activity = .none
@@ -11,23 +11,37 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private var dotPhase = 0
     private var doneReset: DispatchWorkItem?
 
-    /// Draws the handset with optional dots (task in progress) or a check (task done), as a template image.
+    /// Draws the handset with an optional badge in the lower-right corner: dots while the task runs, a check when
+    /// it finishes. The badge is knocked out of the handset first so it reads as its own shape (template image).
     private static func compose(base: String, dots: Int = 0, check: Bool = false) -> NSImage {
-        let extra: CGFloat = (dots > 0 || check) ? 14 : 0
-        let size = NSSize(width: 18 + extra, height: 18)
-        let image = NSImage(size: size, flipped: false) { _ in
+        let side: CGFloat = 18
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
             let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
             if let phone = NSImage(systemSymbolName: base, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-                let pr = NSRect(x: (18 - phone.size.width) / 2, y: (18 - phone.size.height) / 2, width: phone.size.width, height: phone.size.height)
+                let pr = NSRect(x: (side - phone.size.width) / 2, y: (side - phone.size.height) / 2, width: phone.size.width, height: phone.size.height)
                 phone.draw(in: pr)
             }
-            NSColor.black.setFill()
-            for i in 0..<dots {
-                NSBezierPath(ovalIn: NSRect(x: 19 + CGFloat(i) * 4.5, y: 7.5, width: 3, height: 3)).fill()
+            let ctx = NSGraphicsContext.current
+            if dots > 0 {
+                let d: CGFloat = 2.6, gap: CGFloat = 1.0
+                let x0 = side - 0.5 - (d * 3 + gap * 2)
+                let y = side - d - 0.5                                   // upper-right corner
+                // knock the badge area out of the handset so the dots read as their own shape
+                ctx?.compositingOperation = .destinationOut
+                NSColor.black.setFill()
+                for i in 0..<3 {
+                    NSBezierPath(ovalIn: NSRect(x: x0 + CGFloat(i) * (d + gap), y: y, width: d, height: d).insetBy(dx: -1.1, dy: -1.1)).fill()
+                }
+                ctx?.compositingOperation = .sourceOver
+                for i in 0..<dots {
+                    NSBezierPath(ovalIn: NSRect(x: x0 + CGFloat(i) * (d + gap), y: y, width: d, height: d)).fill()
+                }
             }
             if check, let mark = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)) {
-                mark.draw(in: NSRect(x: 19, y: (18 - mark.size.height) / 2, width: mark.size.width, height: mark.size.height))
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8, weight: .heavy)) {
+                let r = NSRect(x: side - mark.size.width - 0.5, y: side - mark.size.height - 0.5, width: mark.size.width, height: mark.size.height)
+                mark.draw(in: r.insetBy(dx: -1.4, dy: -1.4), from: .zero, operation: .destinationOut, fraction: 1)
+                mark.draw(in: r)
             }
             return true
         }

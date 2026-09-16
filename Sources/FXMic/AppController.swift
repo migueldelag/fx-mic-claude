@@ -376,12 +376,9 @@ final class AppController {
                 if let target {
                     activity.watch(sessionTitle: target, onThinking: { [weak self] in
                         Log.write("activity: \(target) is thinking")
-                        self?.hud.thinking()
                         self?.onActivity?(.thinking)
                     }, onDone: { [weak self] in
-                        let claudeInFront = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == ClaudeApp.bundleID
-                        Log.write("activity: \(target) done\(claudeInFront ? " (Claude in front, no toast)" : "")")
-                        if !claudeInFront { self?.hud.done { ClaudeApp.toggle() } }
+                        Log.write("activity: \(target) done")
                         self?.onActivity?(.done)
                     })
                 }
