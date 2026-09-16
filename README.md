@@ -51,7 +51,7 @@ the boot-order discovery and the crash it caused).
 
 ## What you need
 
-- A [Teenage Engineering EP-2350 FX mic](https://teenage.engineering/products/ep-2350) (tested on OS 1.1.2, [guide](https://teenage.engineering/guides/ep-2350)) with two AAA batteries.
+- A [Teenage Engineering EP-2350 FX mic](https://teenage.engineering/store/ep-2350) (tested on OS 1.1.2, [guide](https://teenage.engineering/guides/ep-2350)) with two AAA batteries.
 - A Mac running macOS 26 with the Xcode command line tools installed (`xcode-select --install`).
 - A way to feed the mic's 3.5 mm line output into the Mac as a microphone input. Two options are tested:
 
