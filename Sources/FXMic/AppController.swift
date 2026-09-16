@@ -54,6 +54,7 @@ final class AppController {
     private var canceled = false
     private var utteranceSerial = 0
     private var lastLevelPush = Date.distantPast
+    private var meterLevel: Float = -60
     private var partials: [String: String] = [:]
 
     private let transcriberLock = NSLock()
@@ -260,9 +261,12 @@ final class AppController {
             }
             transcriber?.feed(frame, sampleRate: sampleRate)
             // No time cap: a message ends only on the release marker or a shake.
-            if Date().timeIntervalSince(lastLevelPush) > 0.05 {
+            // Meter ballistics: instant attack, about 60 dB/s release, pushed to the HUD at ~60 Hz.
+            meterLevel = max(rms, meterLevel - 0.6)
+            if Date().timeIntervalSince(lastLevelPush) > 0.016 {
                 lastLevelPush = Date()
-                DispatchQueue.main.async { self.hud.model.level = rms }
+                let shown = meterLevel
+                DispatchQueue.main.async { self.hud.model.level = shown }
             }
         }
 
@@ -320,7 +324,12 @@ final class AppController {
             DispatchQueue.main.async { self.hud.flash("Transcriber not ready yet", tint: .yellow, icon: "hourglass") }
             return
         }
-        DispatchQueue.main.async { self.pendingDeliveries += 1 }
+        let hadSpeech = speechSeconds >= 0.3
+        DispatchQueue.main.async {
+            self.pendingDeliveries += 1
+            if self.canceled { return }
+            if hadSpeech { self.hud.sending() } else { self.hud.hide(after: 0.15) }
+        }
         Task.detached { [self] in
             let result = await t.finishUtterance()
             // A tap during speech resolves up to 450 ms after the release; give it time to cancel.

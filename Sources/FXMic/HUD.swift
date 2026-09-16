@@ -22,15 +22,19 @@ struct HUDView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.15), value: model.title)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.primary.opacity(0.1))
                         Capsule().fill(model.tint)
                             .frame(width: geo.size.width * CGFloat(model.showMeter ? max(0, min(1, (model.level + 60) / 54)) : 0))
+                            .animation(.linear(duration: 0.05), value: model.level)
                     }
                 }.frame(width: 150, height: 6)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: model.tint)
         .padding(.horizontal, 16).padding(.vertical, 12)
         .frame(width: 260, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -78,8 +82,8 @@ final class HUDController {
     func show() {
         guard Settings.shared.hudEnabled else { return }
         hideWork?.cancel()
-        place()
         if panel.alphaValue < 1 || !panel.isVisible {
+            place()
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.15; panel.animator().alphaValue = 1 }
         }
@@ -107,22 +111,32 @@ final class HUDController {
 
     func partial(_ text: String) {}          // the transcript is not shown
 
-    func thinking() {}                       // keep "Listening" until the message is sent
+    func thinking() {}
+
+    /// Handle released, transcript being finalized and typed: same toast, new label.
+    func sending() {
+        model.title = "Sending…"
+        model.icon = "paperplane"
+        model.level = -60
+        show()
+        hide(after: 6)                         // watchdog in case delivery never reports back
+    }
 
     func sent(_ text: String, outcome: String) {
         model.title = "Sent"
         model.tint = .green
-        model.icon = "paperplane.fill"
-        model.showMeter = false
+        model.icon = "checkmark.circle.fill"
+        model.level = -60
         show()
         hide(after: 0.8)
     }
 
     func canceled() {
+        suppressPartials = true
         model.title = "Canceled"
         model.tint = .gray
         model.icon = "xmark.circle"
-        model.showMeter = false
+        model.level = -60
         show()
         hide(after: 0.8)
     }
@@ -131,7 +145,7 @@ final class HUDController {
         model.title = message
         model.tint = tint
         model.icon = icon
-        model.showMeter = false
+        model.level = -60
         show()
         hide(after: seconds)
     }
