@@ -21,6 +21,7 @@ final class Settings {
             "autoGain": true,
             "composerDelivery": true,
             "shakeToCancel": true,
+            "statusBadge": true,
             "iconIdle": "phone.down.fill",
             "iconArmed": "phone.fill",
             "iconListening": "phone.and.waveform.fill",
@@ -44,6 +45,8 @@ final class Settings {
     var iconListening: String { d.string(forKey: "iconListening") ?? "phone.and.waveform.fill" }
     /// Title of the Claude session that receives messages; nil means whatever session was used last.
     var targetSessionTitle: String? { get { d.string(forKey: "targetSessionTitle") } set { d.set(newValue, forKey: "targetSessionTitle") } }
+    /// Dots while the session works and a check when it finishes, drawn on the menu bar icon.
+    var statusBadge: Bool { get { d.bool(forKey: "statusBadge") } set { d.set(newValue, forKey: "statusBadge") } }
     var shakeToCancel: Bool { get { d.bool(forKey: "shakeToCancel") } set { d.set(newValue, forKey: "shakeToCancel") } }
     var composerDelivery: Bool { get { d.bool(forKey: "composerDelivery") } set { d.set(newValue, forKey: "composerDelivery") } }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }

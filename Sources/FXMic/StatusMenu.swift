@@ -96,7 +96,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         case .armed: symbol = Settings.shared.iconArmed
         case .listening: symbol = Settings.shared.iconListening
         }
-        switch activity {
+        switch Settings.shared.statusBadge ? activity : .none {
         case .thinking: item.button?.image = StatusMenu.compose(base: symbol, dots: max(1, dotPhase))
         case .done: item.button?.image = StatusMenu.compose(base: symbol, check: true)
         case .none: item.button?.image = StatusMenu.compose(base: symbol)
@@ -146,6 +146,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let shake = NSMenuItem(title: "Shake to cancel", action: #selector(toggleShake), keyEquivalent: "")
         shake.target = self; shake.state = Settings.shared.shakeToCancel ? .on : .off
         menu.addItem(shake)
+        let badge = NSMenuItem(title: "Menu bar activity badge", action: #selector(toggleBadge), keyEquivalent: "")
+        badge.target = self; badge.state = Settings.shared.statusBadge ? .on : .off
+        menu.addItem(badge)
         let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self; login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.isEnabled = Bundle.main.bundleIdentifier != nil
@@ -182,6 +185,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         Log.write("target: \(title.isEmpty ? "last used" : title)")
         controller.snapshot()
     }
+    @objc private func toggleBadge() { Settings.shared.statusBadge.toggle(); refresh() }
     @objc private func toggleShake() { Settings.shared.shakeToCancel.toggle(); controller.snapshot() }
     @objc private func selectDevice(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
