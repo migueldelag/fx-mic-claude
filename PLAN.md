@@ -151,6 +151,8 @@ pick-up on 2026-09-13. Toggle is debounced at 600 ms.
 - Menu trimmed to: Start/Stop listening, Shake to cancel (toggle, on), Input device, Launch at login, Quit, plus
   "Grant Accessibility access…" only while not granted. No HUD on hang-up.
 
+- 2026-09-15 20:33: a 44 s message was cut by the 90 s utterance cap. Cap removed; the idle timer skips while a message is open. A message ends only on release or a shake.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).

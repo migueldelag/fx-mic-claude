@@ -13,7 +13,7 @@ Nothing from Teenage Engineering is redistributed here.
 
 | You do | What happens |
 | --- | --- |
-| squeeze the handle, talk, release | the message is sent the moment you release, pauses included |
+| squeeze the handle, talk, release | the message is sent the moment you release, pauses included, no time limit |
 | shake the mic hard while squeezing | the message is canceled, nothing is sent |
 | tap the play button, handle released | the Claude window comes forward; tap again to go back |
 | two quick taps, handle released | the app hangs up (stops listening, orange dot off) |
