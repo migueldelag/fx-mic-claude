@@ -18,7 +18,7 @@ Nothing from Teenage Engineering is redistributed here.
 | tap the play button, handle released | the Claude window comes forward; tap again to go back |
 | two quick taps, handle released | the app hangs up (stops listening, orange dot off) |
 | left-click the menu bar handset | pick up or hang up |
-| right-click the menu bar handset | menu: stop/start listening, target session, shake to cancel, input device, launch at login |
+| right-click the menu bar handset | menu: stop/start listening, input device, target session, shake to cancel, launch at login, quit |
 | `⌃⌥Space` | pick up or hang up |
 
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
@@ -79,7 +79,7 @@ open ~/Applications/FXMic.app
 
 On first launch grant Microphone when asked, then use the menu's "Grant Accessibility access…" (System Settings >
 Privacy & Security > Accessibility) so messages can go into Claude's composer. Right-click the handset for the menu:
-Start/Stop listening, Target, Shake to cancel, Input device, Launch at login. "Target" shows, by name, the session that
+Start/Stop listening, Input device, Target, Shake to cancel, Launch at login, Quit. "Target" shows, by name, the session that
 will receive the next message: by default the one you used last. The submenu lists your five most recently used
 sessions; pick another and the next message goes there even while a different session is on screen (the app switches
 the sidebar row before typing, no focus change), and that session then counts as the last used. Under "Input device" pick "External Microphone"
