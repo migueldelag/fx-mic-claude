@@ -93,7 +93,7 @@ final class HUDController {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.28
+            ctx.duration = 0.18
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(restFrame, display: true)
             panel.animator().alphaValue = 1
@@ -105,7 +105,7 @@ final class HUDController {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.panel.isVisible else { return }
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.24
+                ctx.duration = 0.15
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 self.panel.animator().setFrame(self.hiddenFrame, display: true)
                 self.panel.animator().alphaValue = 0
