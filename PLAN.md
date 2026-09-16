@@ -157,7 +157,7 @@ pick-up on 2026-09-13. Toggle is debounced at 600 ms.
 
 The desktop app keeps one JSON per Code session under `~/Library/Application Support/Claude/claude-code-sessions/`
 (`sessionId` = `local_…`, `title`, `lastFocusedAt`, `isArchived`); those ids differ from the CLI session uuids in
-`~/.claude/projects`. The Target menu lists the five most recently focused. Switching is done through the sidebar:
+`~/.claude/projects`. The Target menu lists the five most recently focused and shows the effective target by name: an explicit pick, otherwise the last focused. Timestamps are epoch milliseconds. A sidebar switch updates `lastFocusedAt`, so after a targeted message that session is the last used and the explicit pick clears (Miguel's spec, 2026-09-15 23:10). Switching is done through the sidebar:
 each session is an `AXButton` titled "Idle <title>" or "Running <title>"; AXPress on it changes the view without
 activating the app, and the active session can be read from the header button described "<title>, rename session".
 `claude://code/continue?session=<local id>` also exists but activates the window. Verified: a message sent to
