@@ -95,7 +95,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         guard let name = sender.representedObject as? String else { return }
         Settings.shared.deviceQuery = name
         Log.write("input device set to \(name)")
-        if controller.state != .idle { controller.disarm(reason: "Switching input"); controller.arm() }
+        if controller.state != .idle { controller.disarm(reason: "Switching input") }
+        controller.arm()            // picking a device means: listen on it
         refresh()
     }
     @objc private func toggleLaunchAtLogin() {
