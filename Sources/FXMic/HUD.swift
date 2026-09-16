@@ -132,7 +132,7 @@ final class HUDController {
     /// Handle released, transcript being finalized and typed: same toast, new label.
     func sending() {
         model.title = "Sending…"
-        model.icon = "paperplane"
+        model.icon = "arrow.up"
         model.level = -60
         show()
         hide(after: 6)                         // watchdog in case delivery never reports back
