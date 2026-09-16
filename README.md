@@ -24,7 +24,7 @@ Nothing from Teenage Engineering is redistributed here.
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
 squeeze, which is when the mic turns itself off too. A small toast slides down from the top of the screen while you squeeze, showing "Listening" and a level
 meter, switches to "Sending…" when you release and "Sent" when it lands, then slides away; it never takes focus. Two more toasts follow the session you sent to: "Received · thinking" when
-Claude picks the message up, and "Done · press play or click" when it finishes while you're in another app.
+Claude picks the message up, and "Task done · press play or click here" when it finishes while you are in another app.
 
 ## How it works
 
