@@ -23,7 +23,7 @@ struct HUDView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                    .contentTransition(.numericText())
+                    .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.15), value: model.title)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
