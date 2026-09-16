@@ -20,11 +20,12 @@ struct HUDView: View {
             ZStack {
                 Circle().fill(model.tint.opacity(0.18)).frame(width: 40, height: 40)
                 Image(systemName: model.icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(model.tint)
+                    .transaction { $0.animation = nil }
             }
+            .animation(.easeInOut(duration: 0.2), value: model.tint)
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                    .contentTransition(.opacity)
-                    .animation(.easeInOut(duration: 0.15), value: model.title)
+                    .transaction { $0.animation = nil }      // label swaps instantly; no blending of two words
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.primary.opacity(0.1))
@@ -35,7 +36,6 @@ struct HUDView: View {
                 }.frame(width: 150, height: 6)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: model.tint)
         .padding(.horizontal, 16).padding(.vertical, 12)
         .frame(width: 260, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
