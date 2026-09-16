@@ -51,15 +51,16 @@ the boot-order discovery and the crash it caused).
 
 ## What you need
 
-- A Teenage Engineering EP-2350 FX mic (tested on OS 1.1.2) with two AAA batteries.
+- A [Teenage Engineering EP-2350 FX mic](https://teenage.engineering/products/ep-2350) (tested on OS 1.1.2, [guide](https://teenage.engineering/guides/ep-2350)) with two AAA batteries.
 - A Mac running macOS 26 with the Xcode command line tools installed (`xcode-select --install`).
 - A way to feed the mic's 3.5 mm line output into the Mac as a microphone input. Two options are tested:
 
 | option | what it is | pros | cons |
 | --- | --- | --- | --- |
-| **Headphone jack** (Miguel's daily setup) | a TRS-to-TRRS adapter such as the Movo MC3 from the mic's 3.5 mm cable straight into the MacBook's headphone jack | nothing else to carry, no USB port used, shows up as "External Microphone" | the moment it is plugged in, macOS also moves sound **output** to the jack, so pick "MacBook Pro Speakers" again under System Settings > Sound > Output (or in the Control Center sound menu). Once per plug-in. |
-| **USB audio adapter** | a USB-C dongle with a 3.5 mm mic input, such as the Sabrent AU-UCMA, shows up as "USB Advanced Audio Device" | speakers untouched, works on any Mac | one more dongle and a USB-C port |
+| **Headphone jack** (Miguel's daily setup) | a TRS-to-TRRS adapter such as the [Movo MC3](https://www.amazon.com/dp/B01N9CJDVE) from the mic's 3.5 mm cable straight into the MacBook's headphone jack | nothing else to carry, no USB port used, shows up as "External Microphone" | the moment it is plugged in, macOS also moves sound **output** to the jack, so pick "MacBook Pro Speakers" again under System Settings > Sound > Output (or in the Control Center sound menu). Once per plug-in. |
+| **USB audio adapter** | a USB-C dongle with a 3.5 mm mic input, such as the Sabrent AU-UCMA ([Amazon](https://www.amazon.com/dp/B0DGMVFY85), [Sabrent](https://sabrent.com/products/au-ucma)), shows up as "USB Advanced Audio Device" | speakers untouched, works on any Mac | one more dongle and a USB-C port |
 
+- A 3.5 mm TRS cable from the mic's line out to the adapter (any stereo 3.5 mm male-to-male cable).
 - A USB-C data cable for the mic, needed only while installing the script on the mic (a couple of minutes, once).
 - The mic's line out is loud (2 Vrms). Set its orange volume knob under the lid low. The app trims the input gain
   after each message and both adapters ended up in the right range on their own.
