@@ -135,7 +135,7 @@ Permission: FXMic needs Accessibility (System Settings > Privacy & Security > Ac
 ## Input adapters
 
 - Sabrent AU-UCMA (USB): works, separate device, speakers unaffected. Appears as "USB Advanced Audio Device".
-- Movo MC3 (TRS to TRRS into the MacBook headphone jack), ordered 2026-09-13: should appear as "External Microphone" if the jack recognizes the line output as a mic; macOS then routes output to the jack too, so speakers must be reselected. Level stays hot (2 Vrms into a mic input), orange knob low. Switch the app's input with the menu's "Input device" picker.
+- Movo MC3 (TRS to TRRS into the MacBook headphone jack), in use since 2026-09-15: appears as "External Microphone", 48 kHz; the mic and markers work, and the level landed in the target window at the jack's 21% input gain with no correction. macOS may route output to the jack too; reselect the speakers if so. Selecting a device in the menu's "Input device" picker starts listening on it.
 
 ## 2026-09-15: stale recognizer sessions
 
@@ -144,6 +144,12 @@ message had gone stale. Sessions older than 120 s are now replaced at the start 
 meanwhile), and they are dropped on hang-up. Recognizer diagnostics are logged. Also logged: the source of every
 hang-up (click, hotkey, menu item, double tap, idle timer, quit), after three unexplained hang-ups a second after
 pick-up on 2026-09-13. Toggle is debounced at 600 ms.
+
+## 2026-09-15 evening
+
+- Shake to cancel loosened to 0.4 g, three alternating swings within 550 ms (Miguel: too hard at 0.5 g / four).
+- Menu trimmed to: Start/Stop listening, Shake to cancel (toggle, on), Input device, Launch at login, Quit, plus
+  "Grant Accessibility access…" only while not granted. No HUD on hang-up.
 
 ## Open items
 
