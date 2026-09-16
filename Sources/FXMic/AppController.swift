@@ -263,7 +263,7 @@ final class AppController {
             // No time cap: a message ends only on the release marker or a shake.
             // Meter ballistics: instant attack, about 150 dB/s release, pushed to the HUD on every 10 ms hop.
             meterLevel = max(rms, meterLevel - 1.5)
-            if Date().timeIntervalSince(lastLevelPush) > 0.009 {
+            if !canceled, Date().timeIntervalSince(lastLevelPush) > 0.009 {   // a canceled squeeze shows no level
                 lastLevelPush = Date()
                 let shown = meterLevel
                 DispatchQueue.main.async { self.hud.model.level = shown }
