@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 final class HUDModel: ObservableObject {
@@ -70,30 +71,45 @@ final class HUDController {
         panel.alphaValue = 0
     }
 
+    private var restFrame = NSRect.zero
+    private var hiddenFrame = NSRect.zero
+
+    /// Resting position: top center, just under the menu bar. Hidden position: fully above the screen edge.
     private func place() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         panel.contentView?.layoutSubtreeIfNeeded()
         let size = panel.contentView?.fittingSize ?? NSSize(width: 260, height: 70)
-        panel.setContentSize(size)
         let frame = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 10))
+        restFrame = NSRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 10, width: size.width, height: size.height)
+        hiddenFrame = restFrame.offsetBy(dx: 0, dy: size.height + 24)
     }
 
     func show() {
         guard Settings.shared.hudEnabled else { return }
         hideWork?.cancel()
-        if panel.alphaValue < 1 || !panel.isVisible {
-            place()
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.15; panel.animator().alphaValue = 1 }
+        guard panel.alphaValue < 1 || !panel.isVisible else { return }   // already on screen: change in place, no motion
+        place()
+        panel.setFrame(hiddenFrame, display: false)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.28
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(restFrame, display: true)
+            panel.animator().alphaValue = 1
         }
     }
 
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.25; self.panel.animator().alphaValue = 0 }) { self.panel.orderOut(nil) }
+            guard let self, self.panel.isVisible else { return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.24
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                self.panel.animator().setFrame(self.hiddenFrame, display: true)
+                self.panel.animator().alphaValue = 0
+            }) { self.panel.orderOut(nil) }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
