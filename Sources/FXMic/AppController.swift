@@ -23,6 +23,7 @@ final class AppController {
             "micPermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "handleMode": handleMode,
             "composerDelivery": settings.composerDelivery,
+            "shakeToCancel": settings.shakeToCancel,
             "accessibilityTrusted": ComposerDelivery.isTrusted,
         ])
     }
@@ -233,7 +234,7 @@ final class AppController {
                 handleMode = true
                 gate.forceOpenSilently()
                 Log.write("handle pressed")
-            } else if target == "cancel", handleMode {
+            } else if target == "cancel", handleMode, settings.shakeToCancel {
                 Log.write("shake: cancel")
                 DispatchQueue.main.async { self.canceled = true; self.hud.canceled() }
             } else if target == "release", handleMode {

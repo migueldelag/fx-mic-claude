@@ -20,6 +20,7 @@ final class Settings {
             "hudEnabled": true,
             "autoGain": true,
             "composerDelivery": true,
+            "shakeToCancel": true,
             "iconIdle": "phone.down.fill",
             "iconArmed": "phone.fill",
             "iconListening": "phone.and.waveform.fill",
@@ -41,6 +42,7 @@ final class Settings {
     var iconIdle: String { d.string(forKey: "iconIdle") ?? "phone.down.fill" }
     var iconArmed: String { d.string(forKey: "iconArmed") ?? "phone.fill" }
     var iconListening: String { d.string(forKey: "iconListening") ?? "phone.and.waveform.fill" }
+    var shakeToCancel: Bool { get { d.bool(forKey: "shakeToCancel") } set { d.set(newValue, forKey: "shakeToCancel") } }
     var composerDelivery: Bool { get { d.bool(forKey: "composerDelivery") } set { d.set(newValue, forKey: "composerDelivery") } }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }
 }
