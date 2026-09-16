@@ -356,8 +356,10 @@ final class AppController {
         let outcome: String
         if settings.composerDelivery, ComposerDelivery.isTrusted {
             do {
-                try ComposerDelivery.send(text, toSessionTitled: settings.targetSessionTitle)
-                outcome = settings.targetSessionTitle.map { "Sent to \($0)" } ?? "Sent to Claude"
+                let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
+                try ComposerDelivery.send(text, toSessionTitled: target)
+                outcome = target.map { "Sent to \($0)" } ?? "Sent to Claude"
+                if settings.targetSessionTitle != nil { settings.targetSessionTitle = nil }   // it is the last used now
             } catch {
                 Log.write("composer delivery failed (\(error)), using the inbox")
                 outcome = inboxOutcome(text: text, result: result, speechSeconds: speechSeconds)

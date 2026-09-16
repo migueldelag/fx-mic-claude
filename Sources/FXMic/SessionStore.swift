@@ -11,6 +11,9 @@ enum SessionStore {
     static let root = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
 
+    /// The session used most recently (last focused in the desktop app).
+    static func lastUsed() -> ClaudeSession? { recent(limit: 1).first }
+
     /// Most recently focused sessions first, archived ones excluded.
     static func recent(limit: Int = 5) -> [ClaudeSession] {
         guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
@@ -24,8 +27,13 @@ enum SessionStore {
                   let id = obj["sessionId"] as? String,
                   let title = obj["title"] as? String, !title.isEmpty,
                   (obj["isArchived"] as? Bool) != true else { continue }
-            let stamp = (obj["lastFocusedAt"] as? String) ?? (obj["lastActivityAt"] as? String) ?? ""
-            let date = iso.date(from: stamp) ?? isoPlain.date(from: stamp)
+            // Timestamps are epoch milliseconds in current builds; accept ISO strings too.
+            func date(_ v: Any?) -> Date? {
+                if let n = v as? Double { return Date(timeIntervalSince1970: n > 1e11 ? n / 1000 : n) }
+                if let s = v as? String { return iso.date(from: s) ?? isoPlain.date(from: s) }
+                return nil
+            }
+            let date = date(obj["lastFocusedAt"]) ?? date(obj["lastActivityAt"])
                 ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             sessions.append(ClaudeSession(id: id, title: title, lastUsed: date))
         }

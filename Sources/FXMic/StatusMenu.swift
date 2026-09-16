@@ -45,18 +45,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let targetMenu = NSMenu()
-        let chosen = Settings.shared.targetSessionTitle
-        let lastUsed = NSMenuItem(title: "Last used", action: #selector(selectTarget(_:)), keyEquivalent: "")
-        lastUsed.target = self; lastUsed.representedObject = ""; lastUsed.state = chosen == nil ? .on : .off
-        targetMenu.addItem(lastUsed)
-        targetMenu.addItem(.separator())
-        for session in SessionStore.recent(limit: 5) {
+        let recent = SessionStore.recent(limit: 5)
+        let effective = Settings.shared.targetSessionTitle ?? recent.first?.title
+        for session in recent {
             let item = NSMenuItem(title: session.title, action: #selector(selectTarget(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = session.title
-            item.state = session.title == chosen ? .on : .off
+            item.state = session.title == effective ? .on : .off
             targetMenu.addItem(item)
         }
-        let targetItem = NSMenuItem(title: "Target: \(chosen ?? "last used")", action: nil, keyEquivalent: "")
+        let targetItem = NSMenuItem(title: "Target: \(effective ?? "current session")", action: nil, keyEquivalent: "")
         targetItem.submenu = targetMenu
         menu.addItem(targetItem)
 
