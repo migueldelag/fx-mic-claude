@@ -123,13 +123,12 @@ final class HUDController {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    /// Runs `present` as a separate toast: after the current one has finished sliding away.
-    private func asNewToast(_ present: @escaping () -> Void) {
-        guard panel.isVisible else { present(); return }
-        let wait = max(0.05, hideCompletesAt?.timeIntervalSinceNow ?? 0.3) + 0.1
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+    /// Runs `present` as a separate toast: `gap` seconds after the current one has finished sliding away.
+    private func asNewToast(gap: TimeInterval, _ present: @escaping () -> Void) {
+        let remaining = panel.isVisible ? max(0.05, hideCompletesAt?.timeIntervalSinceNow ?? 0.3) : 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + remaining + gap) { [weak self] in
             guard let self else { return }
-            if self.panel.isVisible { self.asNewToast(present) } else { present() }
+            if self.panel.isVisible { self.asNewToast(gap: 0.3, present) } else { present() }
         }
     }
 
@@ -167,7 +166,7 @@ final class HUDController {
 
     /// Claude picked the message up and is working: its own toast, no meter, two seconds.
     func thinking() {
-        asNewToast { [weak self] in
+        asNewToast(gap: 1.5) { [weak self] in
             guard let self else { return }
             self.panel.ignoresMouseEvents = true
             self.model.onTap = nil
@@ -182,12 +181,12 @@ final class HUDController {
 
     /// Claude finished while another app was in front: its own toast, clickable; the play button opens Claude too.
     func done(onTap: @escaping () -> Void) {
-        asNewToast { [weak self] in
+        asNewToast(gap: 0.5) { [weak self] in
             guard let self else { return }
             self.model.onTap = { [weak self] in onTap(); self?.hide(after: 0) }
             self.panel.ignoresMouseEvents = false
             self.model.showMeter = false
-            self.model.title = "Done · press play or click"
+            self.model.title = "Task done · press play or click here"
             self.model.tint = .green
             self.model.icon = "checkmark.message.fill"
             self.show()
