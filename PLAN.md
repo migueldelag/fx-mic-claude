@@ -163,7 +163,7 @@ activating the app, and the active session can be read from the header button de
 `claude://code/continue?session=<local id>` also exists but activates the window. Verified: a message sent to
 "mic test session" while another session was on screen landed there, and the next one came back to the original.
 
-- 2026-09-15 23:25: HUD is one toast that slides down from the top edge on squeeze, relabels in place (Listening, Sending…, Sent or Canceled) and slides back up; meter pushed at 60 Hz with instant attack and ~60 dB/s release.
+- 2026-09-15 23:25 to 23:40: HUD is one toast that slides down from the top edge on squeeze (180 ms) and back up when done (150 ms), relabels in place without text animation (Listening, Sending… with an up arrow, Sent, Canceled); meter pushed every 10 ms hop with instant attack and ~150 dB/s release, 30 ms bar animation.
 
 ## Open items
 
