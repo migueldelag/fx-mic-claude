@@ -165,6 +165,8 @@ activating the app, and the active session can be read from the header button de
 
 - 2026-09-15 23:25 to 23:40: HUD is one toast that slides down from the top edge on squeeze (180 ms) and back up when done (150 ms), relabels in place without text animation (Listening, Sending… with an up arrow, Sent, Canceled); meter pushed every 10 ms hop with instant attack and ~150 dB/s release, 30 ms bar animation.
 
+- 2026-09-15 23:50: two notification toasts driven by the target session's sidebar label ("Running <title>" / "Idle <title>", polled through Accessibility by `ActivityWatcher`): "Received · thinking" (2 s, after the mic toast has left) and "Done · press play or click" (6 s, only when Claude is not the front app; click or the play button brings Claude forward). Neither shows the meter; each is its own slide-in/slide-out.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
