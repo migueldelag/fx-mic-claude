@@ -27,6 +27,14 @@ public final class InputCapture {
     private let queue = DispatchQueue(label: "fxmic.capture")
     private var pending: [Float] = []
     private let onHop: ([Float]) -> Void
+    private var configObserver: NSObjectProtocol?
+    private var _lastHopAt = Date()
+
+    /// Called (on an arbitrary thread) when the engine stops on its own, e.g. the audio hardware was reconfigured.
+    public var onStopped: ((String) -> Void)?
+    /// When the last audio buffer arrived. CoreAudio delivers buffers continuously, silence included.
+    public var lastHopAt: Date { queue.sync { _lastHopAt } }
+    public var isRunning: Bool { engine.isRunning }
 
     public init(device: AudioInputDevice, hopSeconds: Double = 0.010, onHop: @escaping ([Float]) -> Void) throws {
         self.device = device
@@ -45,13 +53,37 @@ public final class InputCapture {
         input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(hop), format: format) { [weak self] buffer, _ in
             self?.ingest(buffer)
         }
+        // AVAudioEngine stops itself when the hardware configuration changes (output device switch, unplug, sample
+        // rate change). Without this the app would sit "armed" with no audio flowing.
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            // Our own setup (device binding, buffer size) also fires this right after a start; that one is noise.
+            if Date().timeIntervalSince(self.startedAt) < 1.0 { return }
+            self.onStopped?("audio configuration changed")
+        }
     }
+
+    deinit {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+    }
+
+    public private(set) var startedAt = Date.distantPast
 
     public func start() throws {
         do { try engine.start() } catch { throw CaptureError.start(error) }
+        startedAt = Date()
+        queue.async { [self] in _lastHopAt = Date() }
+    }
+
+    /// After a configuration change the engine is stopped but intact: try to run it again on the same device.
+    public func restart() throws {
+        guard !engine.isRunning else { return }
+        try start()
     }
 
     public func stop() {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver); self.configObserver = nil }
+        onStopped = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
     }
@@ -78,6 +110,7 @@ public final class InputCapture {
             }
         }
         queue.async { [self] in
+            _lastHopAt = Date()
             pending.append(contentsOf: mono)
             while pending.count >= hop {
                 let chunk = Array(pending[0..<hop])

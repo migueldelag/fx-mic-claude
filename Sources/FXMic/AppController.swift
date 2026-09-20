@@ -24,6 +24,7 @@ final class AppController {
             "handleMode": handleMode,
             "composerDelivery": settings.composerDelivery,
             "shakeToCancel": settings.shakeToCancel,
+            "captureRunning": capture?.isRunning ?? false,
             "accessibilityTrusted": ComposerDelivery.isTrusted,
         ])
     }
@@ -123,32 +124,15 @@ final class AppController {
             onStateChange?()
             return
         }
-        var config = GateConfig()
-        config.openDb = settings.openDb
-        config.closeDb = settings.closeDb
-        config.openFrames = 5        // 50 ms of sustained energy starts a message; bumps and chirps do not count
-        config.holdFrames = 60
-        gate = SpeechGate(config: config)
-        preroll = []
         do {
-            let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
-            sampleRate = cap.sampleRate
-            hopSeconds = Double(cap.hop) / cap.sampleRate
-            chirps = ChirpDetector(targets: [
-                ToneTarget(name: "tap", freqs: settings.chirpFreqs),
-                ToneTarget(name: "press", freqs: settings.pressFreqs),
-                ToneTarget(name: "release", freqs: settings.releaseFreqs),
-                ToneTarget(name: "cancel", freqs: settings.cancelFreqs),
-            ], sampleRate: sampleRate, hopSeconds: hopSeconds)
-            handleMode = false
-            try cap.start()
-            capture = cap
-            Log.write("armed on \(device.name) at \(Int(cap.sampleRate)) Hz")
+            try startCapture(device: device)
+            Log.write("armed on \(device.name) at \(Int(sampleRate)) Hz")
             lastError = nil
             lastActivity = Date()
             state = .armed
             ensureTranscriber()
             startIdleTimer()
+            startHeartbeat()
             if settings.composerDelivery { ComposerDelivery.warmUp() }
         } catch {
             lastError = "\(error)"
@@ -158,10 +142,117 @@ final class AppController {
         }
     }
 
+    /// Opens the input and builds the detectors for it. Used by arm() and by recovery.
+    private func startCapture(device: AudioInputDevice) throws {
+        var config = GateConfig()
+        config.openDb = settings.openDb
+        config.closeDb = settings.closeDb
+        config.openFrames = 5        // 50 ms of sustained energy starts a message; bumps and chirps do not count
+        config.holdFrames = 60
+        gate = SpeechGate(config: config)
+        preroll = []
+        let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
+        sampleRate = cap.sampleRate
+        hopSeconds = Double(cap.hop) / cap.sampleRate
+        chirps = ChirpDetector(targets: [
+            ToneTarget(name: "tap", freqs: settings.chirpFreqs),
+            ToneTarget(name: "press", freqs: settings.pressFreqs),
+            ToneTarget(name: "release", freqs: settings.releaseFreqs),
+            ToneTarget(name: "cancel", freqs: settings.cancelFreqs),
+        ], sampleRate: sampleRate, hopSeconds: hopSeconds)
+        handleMode = false
+        cap.onStopped = { [weak self] reason in
+            DispatchQueue.main.async { self?.recover(reason: reason) }
+        }
+        try cap.start()
+        capture = cap
+    }
+
+    // MARK: recovery
+
+    private var recovering = false
+    private var heartbeat: Timer?
+    private var deviceListener: AudioObjectPropertyListenerBlock?
+
+    /// The audio path died under us (jack reconfigured, device unplugged, engine stopped): reconnect, or hang up
+    /// honestly if the device does not come back within a few seconds.
+    private var lastRecoveryAt = Date.distantPast
+    private var recoveriesInWindow = 0
+
+    private func recover(reason: String) {
+        guard state != .idle, !recovering else { return }
+        recovering = true
+        // Backoff: a storm of interruptions (jack reconfiguring) gets a longer pause instead of a tight loop.
+        if Date().timeIntervalSince(lastRecoveryAt) < 10 { recoveriesInWindow += 1 } else { recoveriesInWindow = 0 }
+        lastRecoveryAt = Date()
+        let delay: TimeInterval = recoveriesInWindow >= 3 ? 2.0 : 0.4
+        Log.write("capture interrupted: \(reason); recovering in \(delay) s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.state != .idle else { self?.recovering = false; return }
+            // 1. cheapest: restart the same engine on the same device
+            if let cap = self.capture, AudioDevices.exists(cap.device.id) {
+                do {
+                    try cap.restart()
+                    self.recovering = false
+                    Log.write("engine restarted on \(cap.device.name)")
+                    return
+                } catch {
+                    Log.write("restart failed: \(error); rebuilding")
+                }
+            }
+            // 2. rebuild the capture, waiting for the device to come back if needed
+            self.capture?.stop()
+            self.capture = nil
+            self.attemptReconnect(triesLeft: 12)
+        }
+    }
+
+    private func attemptReconnect(triesLeft: Int) {
+        guard state != .idle else { recovering = false; return }
+        if let device = AudioDevices.find(settings.deviceQuery) {
+            do {
+                try startCapture(device: device)
+                recovering = false
+                Log.write("reconnected to \(device.name) at \(Int(sampleRate)) Hz")
+                snapshot()
+                return
+            } catch {
+                Log.write("reconnect failed: \(error)")
+            }
+        }
+        if triesLeft > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.attemptReconnect(triesLeft: triesLeft - 1) }
+        } else {
+            recovering = false
+            let query = settings.deviceQuery
+            disarm(reason: "input device lost (\(query))")
+            hud.flash("Mic input lost", detail: query, tint: .red, icon: "mic.slash", seconds: 3)
+        }
+    }
+
+    /// Every 2 s: a capture that is armed but delivers no buffers is dead, whatever the engine says.
+    private func startHeartbeat() {
+        heartbeat?.invalidate()
+        heartbeat = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
+            if !cap.isRunning { self.recover(reason: "engine not running") }
+            else if Date().timeIntervalSince(cap.lastHopAt) > 3 { self.recover(reason: "no audio for 3 s") }
+        }
+        if deviceListener == nil {
+            deviceListener = AudioDevices.onDeviceListChange { [weak self] in
+                guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
+                if !AudioDevices.exists(cap.device.id) { self.recover(reason: "input device disappeared") }
+            }
+        }
+    }
+
     func disarm(reason: String? = nil) {
         guard state != .idle else { return }
         idleTimer?.invalidate()
         idleTimer = nil
+        heartbeat?.invalidate()
+        heartbeat = nil
+        recovering = false
         capture?.stop()
         capture = nil
         Log.write("idle" + (reason.map { ": \($0)" } ?? ""))

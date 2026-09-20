@@ -167,6 +167,18 @@ activating the app, and the active session can be read from the header button de
 
 - 2026-09-15 23:50 to 2026-09-16 00:06: session activity is read from the target session's sidebar label ("Running <title>" / "Idle <title>", polled through Accessibility by `ActivityWatcher`). Two notification toasts were tried and removed at Miguel's request; progress shows on the menu bar icon instead: three pulsing dots badge the handset's upper-right corner while the session runs, then a check for two seconds, drawn inside the same 18-point icon with a knocked-out outline.
 
+## 2026-09-19: audio path recovery
+
+Miguel switched the sound output from the headphone jack to the speakers while listening; the orange mic dot went
+away but the app still showed itself armed. Cause: the output switch reconfigures the jack's audio hardware and
+AVAudioEngine stops itself (`AVAudioEngineConfigurationChange`); the app never noticed. Fix: the capture reports
+engine stops, a 2 s heartbeat catches a capture that delivers no buffers or is not running, and a CoreAudio
+device-list listener catches a vanished device. Recovery first restarts the same engine after 0.4 s (2 s after three
+interruptions in ten seconds), then rebuilds the capture with up to 12 retries over 6 s, then hangs up honestly with a
+"Mic input lost" toast. Notifications within 1 s of a start are ignored: the app's own setup (device binding, buffer
+size) fires one, which had produced a reconnect loop at 5 Hz in the first attempt. Verified by switching the default
+output twice with a CoreAudio tool: one interruption and one restart per switch, no loop.
+
 ## Open items
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).

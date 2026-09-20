@@ -92,6 +92,20 @@ public enum AudioDevices {
         return false
     }
 
+    /// Calls `handler` on the main queue whenever the set of audio devices changes (plug, unplug, jack reconfiguration).
+    @discardableResult
+    public static func onDeviceListChange(_ handler: @escaping () -> Void) -> AudioObjectPropertyListenerBlock {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let block: AudioObjectPropertyListenerBlock = { _, _ in handler() }
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+        return block
+    }
+
+    public static func exists(_ id: AudioDeviceID) -> Bool { inputs().contains { $0.id == id } }
+
     // MARK: helpers
 
     static func stringProperty(_ id: AudioDeviceID, _ selector: AudioObjectPropertySelector) -> String? {
