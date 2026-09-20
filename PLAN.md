@@ -175,7 +175,13 @@ AVAudioEngine stops itself (`AVAudioEngineConfigurationChange`); the app never n
 engine stops, a 2 s heartbeat catches a capture that delivers no buffers or is not running, and a CoreAudio
 device-list listener catches a vanished device. Recovery waits 0.4 s (2 s after three interruptions in ten seconds), then: device gone
 from the system, hang up at once (Miguel: a disconnected input must hang up); device present, restart the same
-engine, or rebuild the capture on it once, or hang up. Hang-ups stay silent; the handset icon shows the state. Notifications within 1 s of a start are ignored: the app's own setup (device binding, buffer
+engine, or rebuild the capture on it once, or hang up. Hang-ups stay silent; the handset icon shows the state.
+- Second finding, same day: restarting the stopped engine was not enough. After the switch the engine came back bound to
+  `CADefaultDeviceAggregate-…`, macOS's default-input aggregate (the built-in mic), so audio flowed and the dot came
+  back while the marker tones from the jack were never heard. Recovery now always rebuilds the capture on our device,
+  `InputCapture.start()` verifies the bound device and throws if it is wrong, and the 1 s heartbeat checks the bound
+  device too ("engine drifted to …" in the log). Verified with the output switcher: drift caught and rebuilt within
+  about a second, twice. Notifications within 1 s of a start are ignored: the app's own setup (device binding, buffer
 size) fires one, which had produced a reconnect loop at 5 Hz in the first attempt. Verified by switching the default
 output twice with a CoreAudio tool: one interruption and one restart per switch, no loop.
 

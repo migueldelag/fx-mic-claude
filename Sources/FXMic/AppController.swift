@@ -195,15 +195,8 @@ final class AppController {
                 self.disarm(reason: "input device disconnected (\(self.settings.deviceQuery))")
                 return
             }
-            // Device still there: restart the same engine, or rebuild the capture on it once.
-            do {
-                try cap.restart()
-                self.recovering = false
-                Log.write("engine restarted on \(cap.device.name)")
-                return
-            } catch {
-                Log.write("restart failed: \(error); rebuilding")
-            }
+            // Device still there: rebuild the capture on it. (Restarting the stopped engine is not enough: it can come
+            // back bound to the default input, the built-in mic, and never hear the marker tones again.)
             self.capture?.stop()
             self.capture = nil
             if let device = AudioDevices.find(self.settings.deviceQuery) {
@@ -222,13 +215,17 @@ final class AppController {
         }
     }
 
-    /// Every 2 s: a capture that is armed but delivers no buffers is dead, whatever the engine says.
+    /// Every second: a capture that delivers no buffers, is not running, or is bound to another device is dead.
     private func startHeartbeat() {
         heartbeat?.invalidate()
-        heartbeat = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+        heartbeat = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
             if !cap.isRunning { self.recover(reason: "engine not running") }
             else if Date().timeIntervalSince(cap.lastHopAt) > 3 { self.recover(reason: "no audio for 3 s") }
+            else if let bound = cap.boundDeviceID(), bound != cap.device.id {
+                let name = AudioDevices.inputs().first { $0.id == bound }?.name ?? "\(bound)"
+                self.recover(reason: "engine drifted to \(name)")
+            }
         }
         if deviceListener == nil {
             deviceListener = AudioDevices.onDeviceListChange { [weak self] in

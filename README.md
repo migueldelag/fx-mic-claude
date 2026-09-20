@@ -135,8 +135,8 @@ Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log a
   (right-click, "Input device": "External Microphone" for the jack adapter, "USB Advanced Audio Device" for the
   Sabrent), or the mic script is not installed (`tools/install_disk.sh install`).
 - **No sound from the Mac after plugging the jack adapter in**: macOS moved output to the jack. System Settings >
-  Sound > Output > MacBook Pro Speakers. Switching output while listening briefly stops the audio engine; the app
-  restarts it within a second on its own (log line "engine restarted"). Unplugging the adapter or the mic while
+  Sound > Output > MacBook Pro Speakers. Switching output while listening knocks the audio engine off the
+  jack input; the app notices within a second and rebinds it (log lines "engine drifted" and "reconnected"). Unplugging the adapter or the mic while
   listening hangs up; pick up again after plugging back in.
 - **Messages arrive as system notes instead of your bubbles**: Accessibility is not granted, or the Claude window is
   closed. Check `~/.fxmic/fxmic.log` for "composer delivery failed".

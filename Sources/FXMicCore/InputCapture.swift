@@ -6,12 +6,14 @@ public enum CaptureError: Error, CustomStringConvertible {
     case noAudioUnit
     case setDevice(OSStatus)
     case start(Error)
+    case wrongDevice(AudioDeviceID)
 
     public var description: String {
         switch self {
         case .noAudioUnit: return "input node has no audio unit"
         case .setDevice(let s): return "could not select the device (OSStatus \(s))"
         case .start(let e): return "engine start failed: \(e)"
+        case .wrongDevice(let id): return "engine came up bound to device \(id) instead of the requested input"
         }
     }
 }
@@ -73,12 +75,21 @@ public final class InputCapture {
         do { try engine.start() } catch { throw CaptureError.start(error) }
         startedAt = Date()
         queue.async { [self] in _lastHopAt = Date() }
+        // After a hardware reconfiguration AVAudioEngine can come back on the system default input instead of the
+        // device we bound. Audio then flows (from the wrong mic) and nothing else reveals it, so check explicitly.
+        if let bound = boundDeviceID(), bound != device.id {
+            engine.stop()
+            throw CaptureError.wrongDevice(bound)
+        }
     }
 
-    /// After a configuration change the engine is stopped but intact: try to run it again on the same device.
-    public func restart() throws {
-        guard !engine.isRunning else { return }
-        try start()
+    /// The device the engine's input unit is actually connected to right now.
+    public func boundDeviceID() -> AudioDeviceID? {
+        guard let unit = engine.inputNode.audioUnit else { return nil }
+        var id: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, &size)
+        return status == noErr ? id : nil
     }
 
     public func stop() {
