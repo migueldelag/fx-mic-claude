@@ -189,44 +189,36 @@ final class AppController {
         Log.write("capture interrupted: \(reason); recovering in \(delay) s")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.state != .idle else { self?.recovering = false; return }
-            // 1. cheapest: restart the same engine on the same device
-            if let cap = self.capture, AudioDevices.exists(cap.device.id) {
-                do {
-                    try cap.restart()
-                    self.recovering = false
-                    Log.write("engine restarted on \(cap.device.name)")
-                    return
-                } catch {
-                    Log.write("restart failed: \(error); rebuilding")
-                }
+            // Device gone (adapter or mic unplugged): hang up at once. The half-second delay above filters blips.
+            guard let cap = self.capture, AudioDevices.exists(cap.device.id) else {
+                self.recovering = false
+                self.disarm(reason: "input device disconnected (\(self.settings.deviceQuery))")
+                return
             }
-            // 2. rebuild the capture, waiting for the device to come back if needed
-            self.capture?.stop()
-            self.capture = nil
-            self.attemptReconnect(triesLeft: 12)
-        }
-    }
-
-    private func attemptReconnect(triesLeft: Int) {
-        guard state != .idle else { recovering = false; return }
-        if let device = AudioDevices.find(settings.deviceQuery) {
+            // Device still there: restart the same engine, or rebuild the capture on it once.
             do {
-                try startCapture(device: device)
-                recovering = false
-                Log.write("reconnected to \(device.name) at \(Int(sampleRate)) Hz")
-                snapshot()
+                try cap.restart()
+                self.recovering = false
+                Log.write("engine restarted on \(cap.device.name)")
                 return
             } catch {
-                Log.write("reconnect failed: \(error)")
+                Log.write("restart failed: \(error); rebuilding")
             }
-        }
-        if triesLeft > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.attemptReconnect(triesLeft: triesLeft - 1) }
-        } else {
-            recovering = false
-            let query = settings.deviceQuery
-            disarm(reason: "input device lost (\(query))")
-            hud.flash("Mic input lost", detail: query, tint: .red, icon: "mic.slash", seconds: 3)
+            self.capture?.stop()
+            self.capture = nil
+            if let device = AudioDevices.find(self.settings.deviceQuery) {
+                do {
+                    try self.startCapture(device: device)
+                    self.recovering = false
+                    Log.write("reconnected to \(device.name) at \(Int(self.sampleRate)) Hz")
+                    self.snapshot()
+                    return
+                } catch {
+                    Log.write("rebuild failed: \(error)")
+                }
+            }
+            self.recovering = false
+            self.disarm(reason: "input device unusable (\(self.settings.deviceQuery))")
         }
     }
 

@@ -173,9 +173,9 @@ Miguel switched the sound output from the headphone jack to the speakers while l
 away but the app still showed itself armed. Cause: the output switch reconfigures the jack's audio hardware and
 AVAudioEngine stops itself (`AVAudioEngineConfigurationChange`); the app never noticed. Fix: the capture reports
 engine stops, a 2 s heartbeat catches a capture that delivers no buffers or is not running, and a CoreAudio
-device-list listener catches a vanished device. Recovery first restarts the same engine after 0.4 s (2 s after three
-interruptions in ten seconds), then rebuilds the capture with up to 12 retries over 6 s, then hangs up honestly with a
-"Mic input lost" toast. Notifications within 1 s of a start are ignored: the app's own setup (device binding, buffer
+device-list listener catches a vanished device. Recovery waits 0.4 s (2 s after three interruptions in ten seconds), then: device gone
+from the system, hang up at once (Miguel: a disconnected input must hang up); device present, restart the same
+engine, or rebuild the capture on it once, or hang up. Hang-ups stay silent; the handset icon shows the state. Notifications within 1 s of a start are ignored: the app's own setup (device binding, buffer
 size) fires one, which had produced a reconnect loop at 5 Hz in the first attempt. Verified by switching the default
 output twice with a CoreAudio tool: one interruption and one restart per switch, no loop.
 
