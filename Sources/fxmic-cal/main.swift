@@ -17,6 +17,8 @@ struct Options {
     var locales = ["en-US", "es-MX"]
     var realtime = false
     var pilotFreq: Double? = nil
+    var tones: String? = nil          // "name=f1,f2;name=f1,f2" replaces the four default slot targets
+    var minLevel: Float? = nil        // ChirpConfig.minLevelDb
 }
 
 func usage() -> Never {
@@ -45,6 +47,8 @@ while !args.isEmpty {
     case "--stt": opts.stt = true
     case "--realtime": opts.realtime = true
     case "--pilot": opts.pilotFreq = Double(value())
+    case "--tones": opts.tones = value()
+    case "--min-level": opts.minLevel = Float(value())
     case "--locales": opts.locales = value().split(separator: ",").map(String.init)
     case "--open": opts.openDb = Float(value()) ?? opts.openDb
     case "--close": opts.closeDb = Float(value()) ?? opts.closeDb
@@ -123,12 +127,22 @@ if opts.list {
 
 // MARK: shared pipeline state
 
-let targets = [
+let defaultTargets = [
     ToneTarget(name: "slot1 12.0+13.0 kHz", freqs: [12000, 13000]),
     ToneTarget(name: "slot2 14.0+15.0 kHz", freqs: [14000, 15000]),
     ToneTarget(name: "slot3 15.5+16.5 kHz", freqs: [15500, 16500]),
     ToneTarget(name: "slot4 17.0+18.5 kHz", freqs: [17000, 18500]),
 ]
+let targets: [ToneTarget] = opts.tones.map { spec in
+    spec.split(separator: ";").compactMap { part -> ToneTarget? in
+        let kv = part.split(separator: "=")
+        guard kv.count == 2 else { return nil }
+        let freqs = kv[1].split(separator: ",").compactMap { Double($0) }
+        return freqs.isEmpty ? nil : ToneTarget(name: String(kv[0]), freqs: freqs)
+    }
+} ?? defaultTargets
+var chirpConfig = ChirpConfig()
+if let m = opts.minLevel { chirpConfig.minLevelDb = m }
 
 var sampleRate: Double = 48000
 var hopSeconds = 0.010
@@ -243,7 +257,7 @@ func process(_ frame: [Float]) {
 }
 
 func armDetectors() {
-    chirps = ChirpDetector(targets: targets, sampleRate: sampleRate, hopSeconds: hopSeconds)
+    chirps = ChirpDetector(targets: targets, sampleRate: sampleRate, hopSeconds: hopSeconds, config: chirpConfig)
     if opts.scan { scanner = BandScanner(sampleRate: sampleRate) }
 }
 
