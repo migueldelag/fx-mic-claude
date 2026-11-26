@@ -97,12 +97,21 @@ Power the mic on, connect its USB-C port to the Mac; a drive called "FX MIC DISK
 
 ```
 tools/build_fxmic_script.py --from-device     # reads TE's startup script from your mic and writes the patched copy
-tools/install_disk.sh install                 # copies main.py, fxmic.py and the four marker sounds to the disk
+tools/install_disk.sh install                 # boot stub as main.py; fxmic.py, config.json and the markers in claude/
 ```
 
 Eject the disk, unplug, power the mic off with the small button above the USB port, squeeze to start. Done: the
-script runs on every boot from now on. `tools/install_disk.sh remove` deletes the two files and the mic is stock again
-(the sounds can stay, or delete `config.json` and the `.wav` files to get the horn and applause back).
+script runs on every boot from now on. `tools/install_disk.sh remove` deletes `main.py` and `claude/` and the mic is
+stock again.
+
+**Switching modes on the mic.** Claude mode keeps its files in `claude/`, so the disk root stays factory. To switch
+between Claude mode and stock (factory effects and sounds, no marker beeps, for example to use the mic with a
+K.O. II): with the mic on and the handle released, hold the orange FX button for 3 seconds for Claude mode, or the
+white sample button for 3 seconds for stock. The sample LEDs sweep up three times for Claude or down three times for
+stock (also when it already was in that mode), and the mode is saved in `claude/mode`. Turn the mic off and on to
+start in that mode. The hold also steps the FX preset or sample once, like any press; that resets at the restart.
+TE's own script gives these buttons no long-press action, and its button combinations (white + grey for recovery,
+handle + double-click for the bootloader) only apply while powering on.
 
 Do not use `mpremote` or any pyserial-based tool on the mic's serial port: opening the port with modem-line toggling
 resets the mic. `tools/mp_exec.py` runs code over the raw REPL without that.

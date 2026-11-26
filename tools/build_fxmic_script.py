@@ -30,6 +30,10 @@ def patch(original: str) -> str:
     replace_once("    if mess_type == 3:\n        if fx_primed > 0:",
                  "    if mess_type == 3:\n        handle_update(ui.handle())\n        shake_update()\n        if marker_release >= 0:\n            spl.trigger(-1, marker_release, False)\n            marker_release = -1\n        if fx_primed > 0:",
                  "tick handler")
+    # Claude mode keeps its config.json and marker sounds in /fat/claude, so the disk root stays factory for stock mode.
+    replace_once("        os.chdir('/fat')\n",
+                 "        os.chdir('/fat/claude')   # fxmic: Claude mode's config.json and samples live here\n",
+                 "working directory")
     return s
 
 def main():
