@@ -32,6 +32,19 @@ def patch(original: str) -> str:
                  "tick handler")
     return s
 
+def warn_old_firmware(machine: str):
+    """Firmware 1.0.9 to 1.1.1 cannot load custom samples from config.json (TE's 1.1.2 notes: "fix regressions since
+    1.0.9 parsing user json file"); the marker sounds then never play and squeezes go unnoticed."""
+    try:
+        version = tuple(int(p) for p in machine.split()[-1].split("."))
+    except (ValueError, IndexError):
+        print(f"note: could not read the firmware version from {machine!r}; 1.1.2 or later is required")
+        return
+    print(f"mic firmware: {'.'.join(map(str, version))}")
+    if version < (1, 1, 2):
+        print("WARNING: firmware older than 1.1.2 does not load the marker sounds from config.json.\n"
+              "         Update first: https://teenage.engineering/downloads/ep-2350")
+
 def main():
     args = sys.argv[1:]
     here = os.path.dirname(os.path.abspath(__file__))
@@ -41,10 +54,13 @@ def main():
         sys.path.insert(0, here)
         from mp_exec import open_port, raw_exec
         fd = open_port()
+        version, _ = raw_exec(fd, "import sys\nprint(sys.implementation._machine)", 10)
         out, err = raw_exec(fd, "f=open('/rom/main.py')\nwhile True:\n b=f.read(512)\n if not b: break\n print(b, end='')\nf.close()", 30)
         os.close(fd)
         if out is None or (err and err.strip()): sys.exit(f"could not read /rom/main.py from the mic: {err}")
-        original = out
+        # The console turns every "\n" into "\r\n"; without this the anchors below never match.
+        original = out.replace("\r\n", "\n")
+        warn_old_firmware((version or "").strip())
     else:
         sys.exit(__doc__)
     patched = patch(original)

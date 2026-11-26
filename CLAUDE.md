@@ -8,7 +8,8 @@ a few Python and zsh tools, and a script that goes on the mic's own disk. Read `
 
 Tell the user what you are doing at each step; steps marked HUMAN need their hands.
 
-1. Prerequisites: macOS 26 or newer (`sw_vers`), Xcode command line tools (`xcode-select -p`; if missing,
+1. Prerequisites: mic firmware 1.1.2 or newer (older firmware fails to load the marker sounds from `config.json`;
+   `tools/build_fxmic_script.py --from-device` prints the version), macOS 26 or newer (`sw_vers`), Xcode command line tools (`xcode-select -p`; if missing,
    HUMAN runs `xcode-select --install`), Python 3 (system one is fine). The mic's 3.5 mm output must reach a
    microphone input on the Mac: a TRS-to-TRRS adapter in the headphone jack ("External Microphone") or a USB audio
    adapter such as the Sabrent AU-UCMA ("USB Advanced Audio Device"). Check with
