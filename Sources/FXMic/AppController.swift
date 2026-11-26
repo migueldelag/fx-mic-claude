@@ -219,7 +219,9 @@ final class AppController {
     private func startHeartbeat() {
         heartbeat?.invalidate()
         heartbeat = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
+            guard let self, self.state != .idle else { return }
+            self.checkMicMode()
+            guard !self.recovering, let cap = self.capture else { return }
             if !cap.isRunning { self.recover(reason: "engine not running") }
             else if Date().timeIntervalSince(cap.lastHopAt) > 3 { self.recover(reason: "no audio for 3 s") }
             else if let bound = cap.boundDeviceID(), bound != cap.device.id {
@@ -232,6 +234,29 @@ final class AppController {
                 guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
                 if !AudioDevices.exists(cap.device.id) { self.recover(reason: "input device disappeared") }
             }
+        }
+    }
+
+    /// macOS applies the Control Center Mic Mode per app. Voice Isolation passes speech but silences the marker tones
+    /// within a few milliseconds, so squeezes are never seen and nothing reports an error. Warn when it is active.
+    private var lastMicMode: AVCaptureDevice.MicrophoneMode?
+    private func checkMicMode() {
+        let mode = AVCaptureDevice.activeMicrophoneMode
+        guard mode != lastMicMode else { return }
+        lastMicMode = mode
+        let name: String
+        switch mode {
+        case .standard: name = "Standard"
+        case .wideSpectrum: name = "Wide Spectrum"
+        case .voiceIsolation: name = "Voice Isolation"
+        @unknown default: name = "mode \(mode.rawValue)"
+        }
+        Log.write("mic mode: \(name)")
+        if mode == .voiceIsolation {
+            lastError = "Mic Mode is Voice Isolation: it removes the squeeze tones. Choose Standard in Control Center > Mic Mode."
+            hud.flash("Voice Isolation is on", detail: "It removes the squeeze tones. Choose Standard.", tint: .red, icon: "waveform.slash", seconds: 6)
+            AVCaptureDevice.showSystemUserInterface(.microphoneModes)
+            onStateChange?()
         }
     }
 

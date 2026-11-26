@@ -134,6 +134,12 @@ Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log a
 - **Nothing happens when you squeeze**: the app is idle (left-click the handset), or the input device is wrong
   (right-click, "Input device": "External Microphone" for the jack adapter, "USB Advanced Audio Device" for the
   Sabrent), or the mic script is not installed (`tools/install_disk.sh install`).
+- **Speech arrives but squeezes are never detected (no "handle pressed" in the log)**: check FXMic's Mic Mode.
+  While FXMic is listening, open Control Center > Mic Mode and choose Standard. Voice Isolation keeps speech and
+  silences the marker tones a few milliseconds after they start, so nothing else looks wrong. macOS remembers the mode
+  per app; FXMic logs "mic mode: …" and warns and opens the picker when Voice Isolation is active. Also check the
+  firmware (1.1.2 or later), and that your adapter passes the 12 to 18.5 kHz tones: run
+  `.build/release/fxmic-cal --device "<name>" --scan` while squeezing; no scan lines above 12 kHz means it filters them out.
 - **No sound from the Mac after plugging the jack adapter in**: macOS moved output to the jack. System Settings >
   Sound > Output > MacBook Pro Speakers. Switching output while listening knocks the audio engine off the
   jack input; the app notices within a second and rebinds it (log lines "engine drifted" and "reconnected"). Unplugging the adapter or the mic while
