@@ -106,9 +106,12 @@ stock again.
 
 **Switching modes on the mic.** Claude mode keeps its files in `claude/`, so the disk root stays factory. To switch
 between Claude mode and stock (factory effects and sounds, no marker beeps, for example to use the mic with a
-K.O. II): with the mic on and the handle released, hold the orange FX button for 3 seconds. The sample LEDs sweep up
-three times for Claude or down three times for stock, and the mode is saved in `claude/mode`. Turn the mic off and
-on to start in the new mode. Holding orange also steps the FX preset once; it resets at the restart.
+K.O. II): with the mic on and the handle released, hold the orange FX button for 3 seconds for Claude mode, or the
+white sample button for 3 seconds for stock. The sample LEDs sweep up three times for Claude or down three times for
+stock (also when it already was in that mode), and the mode is saved in `claude/mode`. Turn the mic off and on to
+start in that mode. The hold also steps the FX preset or sample once, like any press; that resets at the restart.
+TE's own script gives these buttons no long-press action, and its button combinations (white + grey for recovery,
+handle + double-click for the bootloader) only apply while powering on.
 
 Do not use `mpremote` or any pyserial-based tool on the mic's serial port: opening the port with modem-line toggling
 resets the mic. `tools/mp_exec.py` runs code over the raw REPL without that.

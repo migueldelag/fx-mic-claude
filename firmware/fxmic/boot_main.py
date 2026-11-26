@@ -2,11 +2,13 @@ import ui
 ui.callback(0)
 # Boot stub, installed as /fat/main.py. Claude mode runs fxmic from /fat/claude; stock mode runs TE's own startup,
 # which then finds no config.json at the disk root and loads the factory effects and sounds. The mode is kept in
-# /fat/claude/mode. To switch: with the mic on and the handle released, hold the orange (FX) button for 3 s; the
-# sample LEDs sweep up for Claude or down for stock, then turn the mic off and on to start in the new mode.
+# /fat/claude/mode. To choose: with the mic on and the handle released, hold orange (FX) for 3 s for Claude mode or
+# white (sample) for 3 s for stock; the sample LEDs sweep up for Claude or down for stock (also when it already was),
+# then turn the mic off and on to start in that mode.
 # A long press while running, rather than a button held at power-on, because the LEDs stay dark until startup (no
 # feedback) and a boot-time check would delay every start. It is watched by a thin wrapper around whichever
-# script's callback is running. Holding orange also steps the FX preset once; that resets at the restart.
+# script's callback is running. Holding a select button also steps its preset or sample once, like any press; that
+# resets at the restart. Grey (play) is left alone: it plays a sample, and in Claude mode it brings Claude forward.
 # Kept short: the tick callback stays cleared until the real script installs its own.
 import sys
 try:
@@ -26,13 +28,13 @@ else:
 
 HOLD_TICKS = 180      # about 3 s at the 60 Hz tick
 held_ticks = 0
+held_button = -1
 sweep = []            # LED positions still to show in the confirmation sweep
 frame = 0
 
 
-def toggle_mode():
+def choose_mode(new):
     global mode, sweep
-    new = 'stock' if mode == 'claude' else 'claude'
     try:
         f = open('/fat/claude/mode', 'w')
         f.write(new)
@@ -45,16 +47,21 @@ def toggle_mode():
 
 
 def watch(message):
-    global held_ticks, sweep, frame
+    global held_ticks, held_button, sweep, frame
     started.python_callback(message)
     if (message >> 16) != 3:          # message type 3 is the 60 Hz tick
         return
-    if ui.sw(2) == 0 and ui.handle() < 0.2:     # buttons top to bottom: orange sw(2) FX, white sw(1), grey sw(0) play
+    # Buttons top to bottom: orange sw(2) FX, white sw(1) sample, grey sw(0) play. Exactly one of orange and white,
+    # handle released.
+    orange, white = ui.sw(2) == 0, ui.sw(1) == 0
+    button = 2 if orange and not white else 1 if white and not orange else -1
+    if button >= 0 and button == held_button and ui.handle() < 0.2:
         held_ticks += 1
         if held_ticks == HOLD_TICKS:
-            toggle_mode()
+            choose_mode('claude' if button == 2 else 'stock')
     else:
         held_ticks = 0
+    held_button = button
     if sweep:
         frame += 1
         if frame % 8 == 0:

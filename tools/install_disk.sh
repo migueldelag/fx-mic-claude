@@ -3,8 +3,8 @@
 #   tools/install_disk.sh install   boot stub as main.py; fxmic.py, config.json and the marker pack in claude/
 #   tools/install_disk.sh remove    deletes main.py and claude/ so TE's built-in startup runs again
 # Afterwards eject the disk, unplug, power off with the small button (or pull the batteries), squeeze to start.
-# Once installed, hold the orange FX button for 3 s while the mic is on to switch between Claude mode and stock
-# (factory effects and sounds, for example with a K.O. II), then restart the mic. The mode is saved in claude/mode.
+# Once installed, with the mic on hold orange (FX) 3 s for Claude mode or white (sample) 3 s for stock (factory
+# effects and sounds, for example with a K.O. II), then restart the mic. The mode is saved in claude/mode.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DISK="$(ls -d /Volumes/*[Ff][Xx]*[Mm][Ii][Cc]* 2>/dev/null | grep -v -i boot | head -1)"
