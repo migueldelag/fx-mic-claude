@@ -113,6 +113,23 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 `/fxmic` in a Claude Code session to receive messages through the file inbox at `~/.fxmic/inbox/`; the skill is in
 `claude/skills/fxmic/SKILL.md`, copy it to `~/.claude/skills/fxmic/`.
 
+## Band-limited or quiet adapters
+
+The default markers sit at 12 to 18.5 kHz. Some cheap USB-C audio dongles sample their mic input at a low internal
+rate and pass nothing above about 7 kHz; one measured here ("AB13X USB Audio") was flat to 6 kHz, 20 dB down at
+7 kHz, and silent above. Squeezes then go unnoticed while speech still arrives. Check with
+`.build/release/fxmic-cal --device "<name>" --scan` while squeezing: no scan lines above 12 kHz means the tones are
+filtered out.
+
+- Use the low-pitch markers (3.4 to 5.7 kHz, regenerate with `tools/make_marker_pack_lowband.py`):
+  `tools/install_disk.sh install marker-pack-lowband`, then run the four `defaults write com.miguel.fxmic … -array …`
+  commands it prints so FXMic listens for the same pitches, and restart FXMic. `tools/install_disk.sh install` and
+  `defaults delete` on those keys go back to the originals.
+- If the input is quiet (the "quiet, turn the orange knob up" hint with the knob already at maximum), lower the
+  thresholds: `defaults write com.miguel.fxmic chirpMinLevelDb -float -85` for the markers and
+  `defaults write com.miguel.fxmic openDb -float -60` so speech still counts, then restart FXMic. The log line
+  "tone threshold … speech threshold …" shows the values in use.
+
 ## Tools
 
 | tool | purpose |
@@ -120,7 +137,8 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 | `fxmic-cal` (Swift, `swift build -c release`) | calibration: live levels, tone scan, gate and gesture events, utterance recordings, `--stt` transcription, `--file` offline replay |
 | `tools/mp_exec.py` | run Python on the mic over the raw REPL without resetting it |
 | `tools/build_fxmic_script.py` | patch TE's startup script with the marker and shake logic |
-| `tools/install_disk.sh` | install or remove the script and sounds on the mic's disk |
+| `tools/install_disk.sh` | install (optionally another marker pack) or remove the script and sounds on the mic's disk |
+| `tools/make_marker_pack_lowband.py` | marker tones at 3.4-5.7 kHz plus `pitches.json`, for adapters that cut everything above ~7 kHz |
 | `tools/make_marker_pack.py` | generate the four marker sounds and `config.json` |
 | `tools/romfs_deploy.py` | write a ROMFS image to the mic's read-only script partition (not needed for the disk route) |
 | `tools/make_escape_uf2.py` | build the recovery UF2 that blanks the disk |

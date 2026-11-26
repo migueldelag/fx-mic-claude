@@ -154,12 +154,16 @@ final class AppController {
         let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
         sampleRate = cap.sampleRate
         hopSeconds = Double(cap.hop) / cap.sampleRate
+        var chirpConfig = ChirpConfig()
+        chirpConfig.minLevelDb = settings.chirpMinLevelDb
         chirps = ChirpDetector(targets: [
             ToneTarget(name: "tap", freqs: settings.chirpFreqs),
             ToneTarget(name: "press", freqs: settings.pressFreqs),
             ToneTarget(name: "release", freqs: settings.releaseFreqs),
             ToneTarget(name: "cancel", freqs: settings.cancelFreqs),
-        ], sampleRate: sampleRate, hopSeconds: hopSeconds)
+        ], sampleRate: sampleRate, hopSeconds: hopSeconds, config: chirpConfig)
+        Log.write(String(format: "tone threshold %.0f dB, speech threshold %.0f dB", chirpConfig.minLevelDb, config.openDb))
+        Log.write("tones: " + (chirps?.targets.map { "\($0.name)=\($0.freqs.map { Int($0) })" }.joined(separator: " ") ?? "none"))
         handleMode = false
         cap.onStopped = { [weak self] reason in
             DispatchQueue.main.async { self?.recover(reason: reason) }
