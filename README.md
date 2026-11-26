@@ -117,7 +117,7 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 
 | tool | purpose |
 | --- | --- |
-| `fxmic-cal` (Swift, `swift build -c release`) | calibration: live levels, tone scan, gate and gesture events, utterance recordings, `--stt` transcription, `--file` offline replay |
+| `fxmic-cal` (Swift, `swift build -c release`) | calibration: live levels, tone scan, gate and gesture events, utterance recordings, `--stt` transcription, `--file` offline replay, `--tones "press=17000,18500;release=14000,15000"` and `--min-level -60` to test other markers and thresholds |
 | `tools/mp_exec.py` | run Python on the mic over the raw REPL without resetting it |
 | `tools/build_fxmic_script.py` | patch TE's startup script with the marker and shake logic |
 | `tools/install_disk.sh` | install or remove the script and sounds on the mic's disk |
@@ -125,6 +125,12 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 | `tools/romfs_deploy.py` | write a ROMFS image to the mic's read-only script partition (not needed for the disk route) |
 | `tools/make_escape_uf2.py` | build the recovery UF2 that blanks the disk |
 | `tools/probe_*.py`, `tools/serial_probe.py`, `tools/repl.py` | the probes used to learn the handle, accelerometer, and boot behavior |
+
+Debug hooks, set as environment variables when launching (`open --env NAME=value ~/Applications/FXMic.app` keeps the
+app's own permissions): `FXMIC_RECORD=/path/live.wav` saves exactly what FXMic hears until it hangs up, to compare
+with `fxmic-cal` recording the same device; `FXMIC_REPLAY=/path/take.wav` feeds a recording through the live pipeline
+(markers, transcription, delivery) 3 s after it starts listening. The log has a "tone <name> level … snr …" line
+for every marker onset.
 
 Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log at `~/.fxmic/fxmic.log`, state at
 `~/.fxmic/state.json`.

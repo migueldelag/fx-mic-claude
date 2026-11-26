@@ -59,6 +59,10 @@ final class AppController {
     private var lastLevelPush = Date.distantPast
     private var meterLevel: Float = -60
     private var partials: [String: String] = [:]
+    /// Debug hook: FXMIC_RECORD=/path.wav saves everything the live input delivers, until FXMic stops listening.
+    private var debugRecorder: WavWriter?
+    /// Debug hook: while FXMIC_REPLAY feeds a recording, live input is ignored.
+    private var replayActive = false
 
     private let transcriberLock = NSLock()
     private var _transcriber: LiveTranscriber?
@@ -134,6 +138,12 @@ final class AppController {
             startIdleTimer()
             startHeartbeat()
             if settings.composerDelivery { ComposerDelivery.warmUp() }
+            let env = ProcessInfo.processInfo.environment
+            if let path = env["FXMIC_RECORD"], debugRecorder == nil {
+                debugRecorder = try? WavWriter(url: URL(fileURLWithPath: path), sampleRate: Int(sampleRate))
+                Log.write("debug: recording live input to \(path)")
+            }
+            if let path = env["FXMIC_REPLAY"] { replay(path) }
         } catch {
             lastError = "\(error)"
             Log.write("audio error: \(error)")
@@ -244,6 +254,7 @@ final class AppController {
         recovering = false
         capture?.stop()
         capture = nil
+        if let recorder = debugRecorder { debugRecorder = nil; recorder.close() }
         Log.write("idle" + (reason.map { ": \($0)" } ?? ""))
         state = .idle
         hud.hide()      // hanging up is silent: the menu bar handset shows the state
@@ -300,13 +311,22 @@ final class AppController {
 
     // MARK: audio pipeline (capture queue)
 
-    private func process(_ frame: [Float]) {
+    private func process(_ frame: [Float], replayed: Bool = false) {
+        if replayActive && !replayed { return }
+        if !replayed { debugRecorder?.append(frame) }
         preroll.append(frame)
         if preroll.count > 20 { preroll.removeFirst() }
 
         let chirpEvents = chirps?.process(frame) ?? []
         let toneActive = chirps?.toneActive ?? false
         let rms = Levels.rmsDb(frame)
+
+        // Every tone onset with its level and SNR, so a missing squeeze can be told apart from a missing tone.
+        for event in chirpEvents {
+            if case .onset(let target, let level, let snr) = event {
+                Log.write(String(format: "tone %@ level %.1f dB snr %.0f dB", target, level, snr))
+            }
+        }
 
         // Handle markers from the mic's script: press opens the message, release sends it.
         for event in chirpEvents {
@@ -497,6 +517,31 @@ final class AppController {
             try? FileManager.default.removeItem(at: url)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { self.deliverText(trimmed) }
+        }
+    }
+
+    /// Debug hook: FXMIC_REPLAY=/path/to.wav feeds a recording (48 kHz, for example one saved by fxmic-cal or
+    /// FXMIC_RECORD) through the live pipeline 3 s after arming, at real-time pace, with live input muted meanwhile.
+    /// Markers, transcription and delivery behave as if the audio came from the mic.
+    private func replay(_ path: String) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+                  (try? file.read(into: buffer)) != nil, let data = buffer.floatChannelData else { Log.write("replay: cannot read \(path)"); return }
+            let frames = Int(buffer.frameLength), channels = Int(buffer.format.channelCount)
+            var mono = [Float](repeating: 0, count: frames)
+            for c in 0..<channels { for i in 0..<frames { mono[i] += data[c][i] / Float(channels) } }
+            let hop = self.capture?.hop ?? 480
+            Log.write("replay: \(path) (\(frames) frames at \(Int(file.processingFormat.sampleRate)) Hz)")
+            var i = 0
+            while i + hop <= frames, let cap = self.capture {
+                let chunk = Array(mono[i..<i + hop])
+                cap.sync { self.replayActive = true; self.process(chunk, replayed: true) }
+                i += hop
+                Thread.sleep(forTimeInterval: Double(hop) / file.processingFormat.sampleRate)
+            }
+            self.capture?.sync { self.replayActive = false }
+            Log.write("replay: done")
         }
     }
 
