@@ -72,6 +72,9 @@ public final class InputCapture {
     public private(set) var startedAt = Date.distantPast
 
     public func start() throws {
+        // Set before starting: the engine posts a configuration change for its own setup while start() runs, and
+        // that one must fall inside the ignore window, or every start triggers a rebuild that starts again.
+        startedAt = Date()
         do { try engine.start() } catch { throw CaptureError.start(error) }
         startedAt = Date()
         queue.async { [self] in _lastHopAt = Date() }

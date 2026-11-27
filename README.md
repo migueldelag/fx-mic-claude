@@ -53,7 +53,7 @@ the boot-order discovery and the crash it caused).
 
 ## What you need
 
-- A [Teenage Engineering EP-2350 FX mic](https://teenage.engineering/store/ep-2350) (tested on OS 1.1.2, [guide](https://teenage.engineering/guides/ep-2350)) with two AAA batteries.
+- A [Teenage Engineering EP-2350 FX mic](https://teenage.engineering/store/ep-2350) on firmware 1.1.2 or later ([guide](https://teenage.engineering/guides/ep-2350), [downloads](https://teenage.engineering/downloads/ep-2350)) with two AAA batteries. Firmware 1.0.9 to 1.1.1 cannot load the marker sounds from `config.json`, so squeezes go unnoticed; `tools/build_fxmic_script.py --from-device` prints the version and warns.
 - A Mac running macOS 26 with the Xcode command line tools installed (`xcode-select --install`).
 - A way to feed the mic's 3.5 mm line output into the Mac as a microphone input. Two options are tested:
 
@@ -117,7 +117,7 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 
 | tool | purpose |
 | --- | --- |
-| `fxmic-cal` (Swift, `swift build -c release`) | calibration: live levels, tone scan, gate and gesture events, utterance recordings, `--stt` transcription, `--file` offline replay |
+| `fxmic-cal` (Swift, `swift build -c release`) | calibration: live levels, tone scan, gate and gesture events, utterance recordings, `--stt` transcription, `--file` offline replay, `--tones "press=17000,18500;release=14000,15000"` and `--min-level -60` to test other markers and thresholds |
 | `tools/mp_exec.py` | run Python on the mic over the raw REPL without resetting it |
 | `tools/build_fxmic_script.py` | patch TE's startup script with the marker and shake logic |
 | `tools/install_disk.sh` | install or remove the script and sounds on the mic's disk |
@@ -125,6 +125,12 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 | `tools/romfs_deploy.py` | write a ROMFS image to the mic's read-only script partition (not needed for the disk route) |
 | `tools/make_escape_uf2.py` | build the recovery UF2 that blanks the disk |
 | `tools/probe_*.py`, `tools/serial_probe.py`, `tools/repl.py` | the probes used to learn the handle, accelerometer, and boot behavior |
+
+Debug hooks, set as environment variables when launching (`open --env NAME=value ~/Applications/FXMic.app` keeps the
+app's own permissions): `FXMIC_RECORD=/path/live.wav` saves exactly what FXMic hears until it hangs up, to compare
+with `fxmic-cal` recording the same device; `FXMIC_REPLAY=/path/take.wav` feeds a recording through the live pipeline
+(markers, transcription, delivery) 3 s after it starts listening. The log has a "tone <name> level … snr …" line
+for every marker onset.
 
 Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log at `~/.fxmic/fxmic.log`, state at
 `~/.fxmic/state.json`.
@@ -134,6 +140,12 @@ Debug hook: `echo "hello" > ~/.fxmic/send.txt` delivers text as if spoken. Log a
 - **Nothing happens when you squeeze**: the app is idle (left-click the handset), or the input device is wrong
   (right-click, "Input device": "External Microphone" for the jack adapter, "USB Advanced Audio Device" for the
   Sabrent), or the mic script is not installed (`tools/install_disk.sh install`).
+- **Speech arrives but squeezes are never detected (no "handle pressed" in the log)**: check FXMic's Mic Mode.
+  While FXMic is listening, open Control Center > Mic Mode and choose Standard. Voice Isolation keeps speech and
+  silences the marker tones a few milliseconds after they start, so nothing else looks wrong. macOS remembers the mode
+  per app; FXMic logs "mic mode: …" and warns and opens the picker when Voice Isolation is active. Also check the
+  firmware (1.1.2 or later), and that your adapter passes the 12 to 18.5 kHz tones: run
+  `.build/release/fxmic-cal --device "<name>" --scan` while squeezing; no scan lines above 12 kHz means it filters them out.
 - **No sound from the Mac after plugging the jack adapter in**: macOS moved output to the jack. System Settings >
   Sound > Output > MacBook Pro Speakers. Switching output while listening knocks the audio engine off the
   jack input; the app notices within a second and rebinds it (log lines "engine drifted" and "reconnected"). Unplugging the adapter or the mic while
