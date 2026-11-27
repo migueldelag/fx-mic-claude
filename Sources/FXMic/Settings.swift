@@ -11,6 +11,7 @@ final class Settings {
             "locales": ["en-US", "es-MX"],
             "idleMinutes": 20,
             "openDb": -44.0,
+            "chirpMinLevelDb": -50.0,
             "closeDb": -50.0,
             "chirpFreqs": [15500.0, 16500.0],
             "pressFreqs": [17000.0, 18500.0],
@@ -33,10 +34,18 @@ final class Settings {
     var idleMinutes: Double { get { d.double(forKey: "idleMinutes") } set { d.set(newValue, forKey: "idleMinutes") } }
     var openDb: Float { get { Float(d.double(forKey: "openDb")) } set { d.set(Double(newValue), forKey: "openDb") } }
     var closeDb: Float { get { Float(d.double(forKey: "closeDb")) } set { d.set(Double(newValue), forKey: "closeDb") } }
-    var chirpFreqs: [Double] { get { (d.array(forKey: "chirpFreqs") as? [Double]) ?? [15500, 16500] } set { d.set(newValue, forKey: "chirpFreqs") } }
-    var pressFreqs: [Double] { get { (d.array(forKey: "pressFreqs") as? [Double]) ?? [17000, 18500] } set { d.set(newValue, forKey: "pressFreqs") } }
-    var cancelFreqs: [Double] { get { (d.array(forKey: "cancelFreqs") as? [Double]) ?? [12000, 13000] } set { d.set(newValue, forKey: "cancelFreqs") } }
-    var releaseFreqs: [Double] { get { (d.array(forKey: "releaseFreqs") as? [Double]) ?? [14000, 15000] } set { d.set(newValue, forKey: "releaseFreqs") } }
+    /// Weakest marker tone that counts. Lower it for quiet input paths; the guard-bin SNR test still rejects speech.
+    var chirpMinLevelDb: Float { get { Float(d.double(forKey: "chirpMinLevelDb")) } set { d.set(Double(newValue), forKey: "chirpMinLevelDb") } }
+    /// Numbers, or numeric strings as `defaults write <domain> <key> -array 4300 5700` stores them.
+    private func doubles(_ key: String) -> [Double]? {
+        guard let items = d.array(forKey: key) else { return nil }
+        let values = items.compactMap { ($0 as? NSNumber)?.doubleValue ?? ($0 as? String).flatMap(Double.init) }
+        return values.count == items.count && !values.isEmpty ? values : nil
+    }
+    var chirpFreqs: [Double] { get { doubles("chirpFreqs") ?? [15500, 16500] } set { d.set(newValue, forKey: "chirpFreqs") } }
+    var pressFreqs: [Double] { get { doubles("pressFreqs") ?? [17000, 18500] } set { d.set(newValue, forKey: "pressFreqs") } }
+    var cancelFreqs: [Double] { get { doubles("cancelFreqs") ?? [12000, 13000] } set { d.set(newValue, forKey: "cancelFreqs") } }
+    var releaseFreqs: [Double] { get { doubles("releaseFreqs") ?? [14000, 15000] } set { d.set(newValue, forKey: "releaseFreqs") } }
     var autoArm: Bool { get { d.bool(forKey: "autoArm") } set { d.set(newValue, forKey: "autoArm") } }
     var hudEnabled: Bool { get { d.bool(forKey: "hudEnabled") } set { d.set(newValue, forKey: "hudEnabled") } }
     var autoGain: Bool { get { d.bool(forKey: "autoGain") } set { d.set(newValue, forKey: "autoGain") } }
