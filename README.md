@@ -15,6 +15,8 @@ Nothing from Teenage Engineering is redistributed here.
 | --- | --- |
 | squeeze the handle, talk, release | the message is sent the moment you release, pauses included, no time limit |
 | shake the mic hard while squeezing | the message is canceled, nothing is sent |
+| press orange (FX) while squeezing | queue: the message waits until the Claude session finishes its turn, then is sent |
+| press white (sample) while squeezing | draft: the message is added to the composer, after any text already there, and not sent |
 | tap the play button, handle released | the Claude window comes forward; tap again to go back |
 | two quick taps, handle released | the app hangs up (stops listening, orange dot off) |
 | left-click the menu bar handset | pick up or hang up |
@@ -30,6 +32,14 @@ second. The sent text still comes from the accurate recognizer. Settings (`defau
 restart FXMic): `hudTranscript -bool false` hides the text, `livePreview -bool false` drops the fast recognizer (live
 text then arrives in bursts a few seconds late), `fastLiveText -bool true` makes every recognizer fast, the sent text
 included, at some cost in accuracy.
+
+Queue and draft show in the toast as soon as the button is pressed ("Listening · Queue" with an orange clock,
+"Listening · Draft" with a blue pencil). Pressing the other button later in the same squeeze switches; the last one
+pressed wins. On release the toast reads "Queueing…" or "Adding to draft…" instead of "Sending…". A queued message
+goes out as soon as the session is idle, so it is sent right away when Claude is not working. Queued messages go one
+at a time, at least 10 s apart; one still waiting after 30 minutes is left in the composer as a draft. Whether a session
+is working is read from the desktop app's own session files (`latestUserFrameAt` newer than `lastTurnEdgeAt`), an
+undocumented detail that may change.
 The menu bar handset then follows the session you sent to: three pulsing dots in its corner while Claude works, a
 check for two seconds when it finishes.
 

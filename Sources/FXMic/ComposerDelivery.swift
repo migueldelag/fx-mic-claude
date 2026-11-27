@@ -61,7 +61,8 @@ enum ComposerDelivery {
         throw Failure.switchFailed
     }
 
-    static func send(_ text: String, toSessionTitled target: String? = nil) throws {
+    /// With `pressSend: false` the text is left in the composer as a draft (after any draft already there).
+    static func send(_ text: String, toSessionTitled target: String? = nil, pressSend: Bool = true) throws {
         guard isTrusted else { throw Failure.notTrusted }
         guard let app = ClaudeApp.running else { throw Failure.claudeNotRunning }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
@@ -92,6 +93,17 @@ enum ComposerDelivery {
         // A draft Miguel typed is set aside, the spoken message is sent on its own, and the draft is put back.
         let before = string(composer, kAXValueAttribute).trimmingCharacters(in: .whitespacesAndNewlines)
         let draft: String? = (!before.isEmpty && !before.lowercased().hasPrefix("type /")) ? before : nil
+        if !pressSend {
+            let combined = draft.map { $0 + " " + text } ?? text
+            var readback = ""
+            for attempt in 0..<3 {
+                AXUIElementSetAttributeValue(composer, kAXValueAttribute as CFString, combined as CFString)
+                Thread.sleep(forTimeInterval: 0.15 + 0.15 * Double(attempt))
+                readback = string(composer, kAXValueAttribute)
+                if readback.hasPrefix(combined.prefix(40)) { return }
+            }
+            throw Failure.valueNotSet
+        }
         if let draft { Log.write("composer holds a draft, will restore it: \(draft.prefix(60))") }
         defer {
             if let draft {

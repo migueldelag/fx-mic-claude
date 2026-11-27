@@ -29,6 +29,7 @@ else:
 HOLD_TICKS = 180      # about 3 s at the 60 Hz tick
 held_ticks = 0
 held_button = -1
+blocked = False       # the current hold overlapped a squeeze (queue/draft gesture): never a mode switch
 sweep = []            # LED positions still to show in the confirmation sweep
 frame = 0
 
@@ -47,20 +48,25 @@ def choose_mode(new):
 
 
 def watch(message):
-    global held_ticks, held_button, sweep, frame
+    global held_ticks, held_button, blocked, sweep, frame
     started.python_callback(message)
     if (message >> 16) != 3:          # message type 3 is the 60 Hz tick
         return
     # Buttons top to bottom: orange sw(2) FX, white sw(1) sample, grey sw(0) play. Exactly one of orange and white,
-    # handle released.
+    # pressed and held with the handle released the whole time (holding one while letting go of the handle is the
+    # queue/draft gesture, so a hold that overlapped a squeeze never switches modes).
     orange, white = ui.sw(2) == 0, ui.sw(1) == 0
     button = 2 if orange and not white else 1 if white and not orange else -1
-    if button >= 0 and button == held_button and ui.handle() < 0.2:
+    squeezed = ui.handle() >= 0.2
+    if button != held_button:         # a new press, or a release: start over
+        held_ticks = 0
+        blocked = squeezed
+    if squeezed:
+        blocked = True
+    if button >= 0 and not blocked:
         held_ticks += 1
         if held_ticks == HOLD_TICKS:
             choose_mode('claude' if button == 2 else 'stock')
-    else:
-        held_ticks = 0
     held_button = button
     if sweep:
         frame += 1

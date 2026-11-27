@@ -62,6 +62,13 @@ final class AppController {
     /// Latest live transcript per recognizer locale for the squeeze in progress (main).
     private var livePartials: [String: (text: String, confidence: Double)] = [:]
     private var transcriberGain: Float = 1          // linear, from settings.transcriberGainDb at each capture start
+    /// Pressing orange during a squeeze makes the mic repeat the press tone (queue: send when Claude finishes its
+    /// turn); white plays the tap tone (draft: leave in the composer). The Listening bar shows the mode.
+    enum Intent: String { case send, queue, draft }
+    private var intents: [Int: Intent] = [:]             // main
+    private var queued: [(text: String, target: String, at: Date)] = []   // main
+    private var queueTimer: Timer?
+    private var lastQueuedSendAt = Date.distantPast
     /// Debug hook: FXMIC_RECORD=/path.wav saves everything the live input delivers, until FXMic stops listening.
     private var debugRecorder: WavWriter?
     /// Debug hook: while FXMIC_REPLAY feeds a recording, live input is ignored.
@@ -367,7 +374,11 @@ final class AppController {
         // Handle markers from the mic's script: press opens the message, release sends it.
         for event in chirpEvents {
             guard case .onset(let target, _, _) = event else { continue }
-            if target == "press" {
+            if target == "press", handleMode {
+                setIntent(.queue)                     // a second press tone inside a squeeze: orange pressed
+            } else if target == "tap", handleMode {
+                setIntent(.draft)                     // the play tone inside a squeeze: white pressed
+            } else if target == "press" {
                 lastActivity = Date()
                 if !gate.isOpen { beginUtterance() }
                 handleMode = true
@@ -476,7 +487,13 @@ final class AppController {
         DispatchQueue.main.async {
             self.pendingDeliveries += 1
             if self.canceled { return }
-            if hadSpeech { self.hud.sending() } else { self.hud.hide(after: 0.15) }
+            let label: String
+            switch self.intents[serial] ?? .send {
+            case .draft: label = "Adding to draft…"
+            case .queue: label = "Queueing…"
+            case .send: label = "Sending…"
+            }
+            if hadSpeech { self.hud.sending(label) } else { self.hud.hide(after: 0.15) }
         }
         Task.detached { [self] in
             let result = await t.finishUtterance()
@@ -525,8 +542,29 @@ final class AppController {
             hud.hide(after: 0.2)
             return
         }
+        let intent = intents.removeValue(forKey: serial) ?? .send
         let outcome: String
-        if settings.composerDelivery, ComposerDelivery.isTrusted {
+        var hudTitle = "Sent"
+        if settings.composerDelivery, ComposerDelivery.isTrusted, intent != .send,
+           let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title {
+            if intent == .draft {
+                do {
+                    try ComposerDelivery.send(text, toSessionTitled: target, pressSend: false)
+                    outcome = "Draft in \(target)"
+                } catch {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    outcome = "Draft failed (\(error)), copied"
+                }
+                hudTitle = "Draft"
+            } else {
+                queued.append((text, target, Date()))
+                outcome = "Queued for \(target)"
+                hudTitle = "Queued"
+                startQueue()
+            }
+            if settings.targetSessionTitle != nil { settings.targetSessionTitle = nil }
+        } else if settings.composerDelivery, ComposerDelivery.isTrusted {
             do {
                 let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
                 try ComposerDelivery.send(text, toSessionTitled: target)
@@ -552,8 +590,46 @@ final class AppController {
         recent.insert((Date(), text, outcome), at: 0)
         if recent.count > 12 { recent.removeLast() }
         lastActivity = Date()
-        hud.sent(text, outcome: outcome)
+        hud.sent(text, outcome: outcome, title: hudTitle)
         onRecentChange?()
+    }
+
+    /// Records the queue/draft choice for the squeeze in progress and shows it in the Listening bar. Capture queue.
+    private func setIntent(_ intent: Intent) {
+        let serial = utteranceSerial
+        Log.write("during squeeze: \(intent == .queue ? "orange pressed: queue" : "white pressed: draft")")
+        DispatchQueue.main.async {
+            self.intents[serial] = intent
+            self.hud.mode(intent == .queue ? "Queue" : "Draft")
+        }
+    }
+
+    /// Sends queued messages one at a time, each once its session is no longer in a turn. After a send it waits
+    /// 10 s, so the session file has time to show the new turn before the next item is considered. An item still
+    /// waiting after 30 minutes is left in the composer as a draft instead.
+    private func startQueue() {
+        Log.write("queue: \(queued.count) waiting")
+        guard queueTimer == nil else { return }
+        queueTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.serviceQueue() }
+        serviceQueue()
+    }
+
+    private func serviceQueue() {
+        guard let item = queued.first else { queueTimer?.invalidate(); queueTimer = nil; return }
+        guard Date().timeIntervalSince(lastQueuedSendAt) > 10 else { return }
+        let expired = Date().timeIntervalSince(item.at) > 30 * 60
+        if !expired, SessionStore.isRunning(title: item.target) == true { return }
+        queued.removeFirst()
+        lastQueuedSendAt = Date()
+        do {
+            try ComposerDelivery.send(item.text, toSessionTitled: item.target, pressSend: !expired)
+            Log.write("queue: \(expired ? "waited 30 min, left as draft in" : "sent to") \(item.target): \(item.text)")
+            hud.sent(item.text, outcome: "", title: expired ? "Queued item left as draft" : "Sent queued message")
+        } catch {
+            Log.write("queue: send failed (\(error)), copied to the clipboard: \(item.text)")
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(item.text, forType: .string)
+        }
     }
 
     private func inboxOutcome(text: String, result: UtteranceResult, speechSeconds: Double) -> String {

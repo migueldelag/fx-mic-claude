@@ -164,16 +164,25 @@ final class HUDController {
         refit()
     }
 
-    func sending() {
-        model.title = "Sending…"
+    /// Queue or draft chosen with a mic button during the squeeze: shown next to "Listening".
+    func mode(_ label: String) {
+        guard model.title.hasPrefix("Listening") else { return }
+        model.title = "Listening · \(label)"
+        model.tint = label == "Queue" ? .orange : .blue
+        model.icon = label == "Queue" ? "clock" : "square.and.pencil"
+    }
+
+    /// The message is being finalized: "Sending…", "Adding to draft…" or "Queueing…".
+    func sending(_ label: String = "Sending…") {
+        model.title = label
         model.icon = "arrow.up"
         model.level = -60
         show()
         hide(after: 6)                         // watchdog in case delivery never reports back
     }
 
-    func sent(_ text: String, outcome: String) {
-        model.title = "Sent"
+    func sent(_ text: String, outcome: String, title: String = "Sent") {
+        model.title = title
         model.body = Settings.shared.hudTranscript ? text : ""   // the final text, briefly
         model.tint = .green
         model.icon = "checkmark.circle.fill"
