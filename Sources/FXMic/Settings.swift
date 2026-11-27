@@ -19,6 +19,10 @@ final class Settings {
             "cancelFreqs": [12000.0, 13000.0],
             "autoArm": true,
             "hudEnabled": true,
+            "hudTranscript": true,
+            "transcriberGainDb": 0.0,
+            "fastLiveText": false,
+            "livePreview": true,
             "autoGain": true,
             "composerDelivery": true,
             "shakeToCancel": true,
@@ -48,6 +52,17 @@ final class Settings {
     var releaseFreqs: [Double] { get { doubles("releaseFreqs") ?? [14000, 15000] } set { d.set(newValue, forKey: "releaseFreqs") } }
     var autoArm: Bool { get { d.bool(forKey: "autoArm") } set { d.set(newValue, forKey: "autoArm") } }
     var hudEnabled: Bool { get { d.bool(forKey: "hudEnabled") } set { d.set(newValue, forKey: "hudEnabled") } }
+    /// Show the live transcript in the Listening bar.
+    var hudTranscript: Bool { get { d.bool(forKey: "hudTranscript") } set { d.set(newValue, forKey: "hudTranscript") } }
+    /// A separate fast recognizer feeds the live text in the bar; the sent text still comes from the accurate one.
+    var livePreview: Bool { get { d.bool(forKey: "livePreview") } set { d.set(newValue, forKey: "livePreview") } }
+    /// Faster results from every recognizer, the sent text included, at some cost in its accuracy
+    /// (SpeechTranscriber .fastResults). Off by default; livePreview gives fast live text without that cost.
+    var fastLiveText: Bool { get { d.bool(forKey: "fastLiveText") } set { d.set(newValue, forKey: "fastLiveText") } }
+    /// Gain applied to the audio fed to the speech recognizer only (clipped at full scale). Quiet inputs recognize
+    /// better with +20 dB: on recordings peaking at -36 to -43 dBFS, confidence rose from 0.75-0.79 to 0.87-0.88
+    /// on the weaker sentences.
+    var transcriberGainDb: Float { get { Float(d.double(forKey: "transcriberGainDb")) } set { d.set(Double(newValue), forKey: "transcriberGainDb") } }
     var autoGain: Bool { get { d.bool(forKey: "autoGain") } set { d.set(newValue, forKey: "autoGain") } }
     var iconIdle: String { d.string(forKey: "iconIdle") ?? "phone.down.fill" }
     var iconArmed: String { d.string(forKey: "iconArmed") ?? "phone.fill" }

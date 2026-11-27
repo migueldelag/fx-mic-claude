@@ -59,6 +59,9 @@ final class AppController {
     private var lastLevelPush = Date.distantPast
     private var meterLevel: Float = -60
     private var partials: [String: String] = [:]
+    /// Latest live transcript per recognizer locale for the squeeze in progress (main).
+    private var livePartials: [String: (text: String, confidence: Double)] = [:]
+    private var transcriberGain: Float = 1          // linear, from settings.transcriberGainDb at each capture start
     /// Debug hook: FXMIC_RECORD=/path.wav saves everything the live input delivers, until FXMic stops listening.
     private var debugRecorder: WavWriter?
     /// Debug hook: while FXMIC_REPLAY feeds a recording, live input is ignored.
@@ -164,6 +167,7 @@ final class AppController {
         let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
         sampleRate = cap.sampleRate
         hopSeconds = Double(cap.hop) / cap.sampleRate
+        transcriberGain = powf(10, settings.transcriberGainDb / 20)
         var chirpConfig = ChirpConfig()
         chirpConfig.minLevelDb = settings.chirpMinLevelDb
         chirps = ChirpDetector(targets: [
@@ -172,7 +176,8 @@ final class AppController {
             ToneTarget(name: "release", freqs: settings.releaseFreqs),
             ToneTarget(name: "cancel", freqs: settings.cancelFreqs),
         ], sampleRate: sampleRate, hopSeconds: hopSeconds, config: chirpConfig)
-        Log.write(String(format: "tone threshold %.0f dB, speech threshold %.0f dB", chirpConfig.minLevelDb, config.openDb))
+        Log.write(String(format: "tone threshold %.0f dB, speech threshold %.0f dB, transcriber gain %+.0f dB, locales %@",
+                         chirpConfig.minLevelDb, config.openDb, settings.transcriberGainDb, settings.locales.joined(separator: ",")))
         Log.write("tones: " + (chirps?.targets.map { "\($0.name)=\($0.freqs.map { Int($0) })" }.joined(separator: " ") ?? "none"))
         handleMode = false
         cap.onStopped = { [weak self] reason in
@@ -320,6 +325,8 @@ final class AppController {
         transcriberLock.unlock()
         guard needed else { return }
         let locales = settings.locales
+        LiveTranscriber.fastResults = settings.fastLiveText
+        LiveTranscriber.previewLane = settings.livePreview && settings.hudTranscript
         Task.detached { [self] in
             do {
                 let t = try await LiveTranscriber(locales: locales) { [weak self] update in self?.handle(update) }
@@ -390,7 +397,7 @@ final class AppController {
                 speechFrames += 1
                 utterancePeak = max(utterancePeak, Levels.peakDb(frame))
             }
-            transcriber?.feed(frame, sampleRate: sampleRate)
+            feedTranscriber(frame)
             // No time cap: a message ends only on the release marker or a shake.
             // Meter ballistics: instant attack, about 150 dB/s release, pushed to the HUD on every 10 ms hop.
             meterLevel = max(rms, meterLevel - 1.5)
@@ -422,6 +429,14 @@ final class AppController {
         }
     }
 
+    /// Feeds the recognizer, with the transcriber-only gain (clipped). The level meter, gate and markers use the
+    /// unamplified signal.
+    private func feedTranscriber(_ frame: [Float]) {
+        guard let t = transcriber else { return }
+        if transcriberGain == 1 { t.feed(frame, sampleRate: sampleRate); return }
+        t.feed(frame.map { max(-1, min(1, $0 * transcriberGain)) }, sampleRate: sampleRate)
+    }
+
     private func beginUtterance() {
         utteranceSerial += 1
         speechFrames = 0
@@ -432,11 +447,11 @@ final class AppController {
         partials = [:]
         lastActivity = Date()
         transcriber?.startUtterance()
-        for f in preroll.dropLast() { transcriber?.feed(f, sampleRate: sampleRate) }
+        for f in preroll.dropLast() { feedTranscriber(f) }
         state = .listening
         activity.cancel()
         DispatchQueue.main.async { self.onActivity?(.none) }
-        DispatchQueue.main.async { self.showListeningIfNeeded() }
+        DispatchQueue.main.async { self.livePartials = [:]; self.showListeningIfNeeded() }
     }
 
     private var hudShownForSerial = -1
@@ -474,9 +489,24 @@ final class AppController {
         }
     }
 
+    /// Recognizer updates arrive per locale lane on the transcriber's tasks. The Listening bar shows the lane that is
+    /// more confident right now (the longer text on a tie), so an English sentence is not shown as its Spanish guess.
     private func handle(_ update: TranscriptUpdate) {
-        // Live text is not shown in the HUD; only recognizer diagnostics are logged.
-        if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)") }
+        if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)"); return }
+        let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if update.locale.hasSuffix("+preview") {               // the fast preview lane drives the bar on its own
+            DispatchQueue.main.async { self.hud.partial(text) }
+            return
+        }
+        if LiveTranscriber.previewLane { return }
+        DispatchQueue.main.async {
+            self.livePartials[update.locale] = (text, update.confidence)
+            let best = self.livePartials.values.max { a, b in
+                abs(a.confidence - b.confidence) > 0.02 ? a.confidence < b.confidence : a.text.count < b.text.count
+            }
+            if let best { self.hud.partial(best.text) }
+        }
     }
 
     // MARK: delivery (main)

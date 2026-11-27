@@ -25,7 +25,7 @@ func usage() -> Never {
     print("""
     fxmic-cal [--list] [--device <uid or name substring>] [--file <wav>] [--scan] [--meter] [--no-record]
               [--record-dir <dir>] [--open <dB>] [--close <dB>] [--duration <seconds>]
-              [--stt] [--locales en-US,es-MX]     live on-device transcription of each utterance
+              [--stt] [--locales en-US,es-MX] [--fast]   live on-device transcription of each utterance (--fast: fast results)
     """)
     exit(2)
 }
@@ -45,6 +45,8 @@ while !args.isEmpty {
     case "--meter": opts.meter = true
     case "--duration": opts.duration = Double(value())
     case "--stt": opts.stt = true
+    case "--fast": LiveTranscriber.fastResults = true
+    case "--preview": LiveTranscriber.previewLane = true
     case "--realtime": opts.realtime = true
     case "--pilot": opts.pilotFreq = Double(value())
     case "--tones": opts.tones = value()

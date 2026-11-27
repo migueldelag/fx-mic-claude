@@ -22,8 +22,14 @@ Nothing from Teenage Engineering is redistributed here.
 | `⌃⌥Space` | pick up or hang up |
 
 English and Spanish are both recognized, chosen per message. The app hangs up by itself after 20 minutes without a
-squeeze, which is when the mic turns itself off too. A small toast slides down from the top of the screen while you squeeze, showing "Listening" and a level
-meter, switches to "Sending…" when you release and "Sent" when it lands, then slides away; it never takes focus.
+squeeze, which is when the mic turns itself off too. A small toast slides down from the top of the screen while you squeeze, showing "Listening", a level
+meter and the live transcript, all of it, growing downward as you talk. It switches to "Sending…" when you release and
+"Sent" with the final text when it lands, then slides away; it never takes focus.
+The live text comes from a second, faster recognizer: first words about 1 s after you start talking, then about once a
+second. The sent text still comes from the accurate recognizer. Settings (`defaults write com.miguel.fxmic …`, then
+restart FXMic): `hudTranscript -bool false` hides the text, `livePreview -bool false` drops the fast recognizer (live
+text then arrives in bursts a few seconds late), `fastLiveText -bool true` makes every recognizer fast, the sent text
+included, at some cost in accuracy.
 The menu bar handset then follows the session you sent to: three pulsing dots in its corner while Claude works, a
 check for two seconds when it finishes.
 
@@ -138,6 +144,9 @@ filtered out.
   thresholds: `defaults write com.miguel.fxmic chirpMinLevelDb -float -85` for the markers and
   `defaults write com.miguel.fxmic openDb -float -60` so speech still counts, then restart FXMic. The log line
   "tone threshold … speech threshold …" shows the values in use.
+- If quiet speech is often misheard, raise the level fed to the recognizer only:
+  `defaults write com.miguel.fxmic transcriberGainDb -float 20`. On recordings peaking at -36 to -43 dBFS, +20 dB raised
+  the confidence of weaker sentences from 0.75-0.79 to 0.87-0.88. The meter, speech gate and markers are unaffected.
 
 ## Tools
 
