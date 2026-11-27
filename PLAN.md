@@ -226,6 +226,39 @@ destiny three. Oh, good.", 0.33), a second orange squeeze appended to it and Cmd
 
 FXMic is now signed with the local "FXMic Dev" identity, so rebuilds keep the Microphone and Accessibility grants.
 
+## 2026-11-27: input closed between squeezes (USB reports)
+
+The marker tones are the only way the Mac sees a squeeze, so the input had to stay open whenever FXMic was armed and
+macOS showed the orange dot the whole time. With the mic on a USB-C data cable its CDC console is there anyway, so the
+script now also prints one line per event (`report()` in `tools/build_fxmic_script.py`: press, release, queue, draft,
+cancel, tap for the play button with the handle released, and `hi` every 120 ticks). `MicSerial` (FXMicCore) watches
+`/dev/cu.usbmodemEP*` once a second, opens it read-only with the same raw/clocal setup as `tools/mp_exec.py` (no
+writes, no modem-line changes, TIOCEXCL so a second reader gets EBUSY), and counts the port live while `fxmic` lines
+keep coming (5 s timeout). Anything else on the console is ignored and never logged.
+
+While live, tone markers are only logged; USB events drive the same squeeze code (`squeezeStarted`, `squeezeEnded`,
+`shakeCancel`, intents), on one pipeline queue shared with the audio hops. The input opens at a squeeze only when
+Apple's recognizer needs it (Apple mode, or Claude mode with `appleFallback`) and closes at the release. Claude's
+dictation has its own input, so Claude mode with the fallback off never opens FXMic's input. Without audio the
+squeeze's length stands in for the speech length in the drop rule.
+
+Tested 2026-11-27 against a pseudo-terminal standing in for the mic (`usbPort` setting, test only): input closed while
+armed; opened 72-109 ms after a press (2254 ms the first time, the dongle waking) and closed 12-16 ms after the
+release; reports stopping mid-squeeze switched to tones within 5 s with the squeeze kept, and their return closed
+the input after the release; cancel and REPL noise behaved. A first build reset `handleMode` when the input opened
+mid-squeeze, so the release was ignored; fixed (`startCapture(midSqueeze:)`). TIOCEXCL does not apply to ptys.
+
+With the mic, same day (script rebuilt from the device, firmware 1.1.2, cable left in): `fxmic hi` every 1.95 s;
+`tools/mp_exec.py` gets "busy" while FXMic runs (TIOCEXCL works on the real port). Opening the port did not reset
+the mic. Claude mode with the fallback: input opened 129-182 ms after the press, closed 19-50 ms after the release;
+draft and queue intents arrived over USB. With `appleFallback` off, a per-process CoreAudio poll
+(kAudioProcessPropertyIsRunningInput, every 0.2 s) showed only Claude Helper holding an input, from Claude's
+dictation start to 8 ms after its stop, and nothing between squeezes. The orange dot that stayed on was another app
+(a DAW) with its own input open. In that mode the Listening bar's meter had nothing to show and looked broken next to
+Claude's live text, so FXMic now opens its input for the squeeze in every mode, only for the meter when the fallback
+is off (Claude's dictation has the mic open then anyway, so the open time does not grow). The meter is hidden only if
+the input fails to open. The Canceled bar shows no meter.
+
 ## Open items
 
 - Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. The plain-send

@@ -28,6 +28,7 @@ final class Settings {
             "transcriptionEngine": "apple",
             "dictationButtonLabels": ["hold to record", "dictat"],
             "shakeToCancel": true,
+            "usbTrigger": true,
             "appleFallback": true,
             "statusBadge": true,
             "iconIdle": "phone.down.fill",
@@ -81,8 +82,13 @@ final class Settings {
     var transcriptionEngine: String { get { d.string(forKey: "transcriptionEngine") ?? "apple" } set { d.set(newValue, forKey: "transcriptionEngine") } }
     /// Case-insensitive pieces of the dictation button's accessibility label, any of which identifies it.
     var dictationButtonLabels: [String] { d.stringArray(forKey: "dictationButtonLabels") ?? ["hold to record", "dictat"] }
+    /// Take squeezes from the mic's USB serial console when it reports them, and keep the audio input closed between
+    /// squeezes. Without reports (mic on batteries, old script) FXMic listens for the marker tones.
+    var usbTrigger: Bool { get { d.bool(forKey: "usbTrigger") } set { d.set(newValue, forKey: "usbTrigger") } }
     /// With Claude's dictation: also run Apple's on-device recognizer on each squeeze, used when Claude's text is
-    /// missing. Off means FXMic does not transcribe at all.
+    /// missing. Off means FXMic does not transcribe at all (and, with squeezes over USB, never opens the input).
+    /// Piece of the mic's serial port name, or a full /dev path. Change it only for tests.
+    var usbPort: String { d.string(forKey: "usbPort") ?? "usbmodemEP" }
     var appleFallback: Bool { get { d.bool(forKey: "appleFallback") } set { d.set(newValue, forKey: "appleFallback") } }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }
 }

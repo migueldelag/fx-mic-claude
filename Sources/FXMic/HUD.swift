@@ -155,6 +155,13 @@ final class HUDController {
         show()
     }
 
+    /// FXMic could not open the input for this squeeze, so there is no level to show: the meter goes, Claude's live
+    /// text stays.
+    func hideMeter() {
+        guard model.title.hasPrefix("Listening") || model.title == "Starting…" else { return }
+        model.showMeter = false
+    }
+
     /// Claude's dictation is being started: the bar says so until Claude listens.
     func starting() {
         guard model.title.hasPrefix("Listening") else { return }
@@ -208,6 +215,7 @@ final class HUDController {
         model.body = ""
         model.tint = .gray
         model.icon = "xmark.circle"
+        model.showMeter = false          // nothing is being heard any more
         model.level = -60
         show()
         hide(after: 0.8)

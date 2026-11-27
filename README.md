@@ -129,6 +129,20 @@ start in that mode. The hold also steps the FX preset or sample once, like any p
 TE's own script gives these buttons no long-press action, and its button combinations (white + grey for recovery,
 handle + double-click for the bootloader) only apply while powering on.
 
+**Input closed between squeezes (USB cable).** The tones need the Mac's input open whenever FXMic listens, so macOS
+shows the orange microphone dot the whole time. If the mic stays connected to the Mac with a USB-C data cable, its
+script also prints each event on its serial console ("fxmic press", "fxmic release", "fxmic queue", "fxmic draft",
+"fxmic cancel", "fxmic tap", and "fxmic hi" about every 2 s). While those lines arrive, FXMic takes squeezes from
+there and keeps the input closed between them. The menu's "Mic open only while squeezing (USB cable)" turns this on
+or off, and the line under it says what is happening now: "closed between squeezes, over USB", "mic not on USB,
+listening for tones", or "listening for tones".
+It opens the input at the squeeze (in 70 to 180 ms here) and closes it at the release, for the level meter and,
+when wanted, Apple's recognizer. With Claude's dictation the mic is open for the squeeze anyway, and with "Apple's
+recognizer as fallback" off FXMic only measures the level and transcribes nothing. On batteries, with a charge-only cable or with an older script, no lines arrive and FXMic goes back
+to the tones within 5 s, mid-squeeze too. The tones still play either way. FXMic only reads the port, never writes
+to it or touches its modem lines, and holds it exclusively: quit FXMic before running `tools/mp_exec.py` or
+`build_fxmic_script.py --from-device`. The setting is `usbTrigger`.
+
 Do not use `mpremote` or any pyserial-based tool on the mic's serial port: opening the port with modem-line toggling
 resets the mic. `tools/mp_exec.py` runs code over the raw REPL without that.
 

@@ -25,6 +25,7 @@ final class AppController {
             "composerDelivery": settings.composerDelivery,
             "shakeToCancel": settings.shakeToCancel,
             "captureRunning": capture?.isRunning ?? false,
+            "trigger": usbLiveMain ? "usb" : "tones",
             "appleFallback": settings.appleFallback,
             "accessibilityTrusted": ComposerDelivery.isTrusted,
         ])
@@ -50,7 +51,18 @@ final class AppController {
     var deviceName: String? { capture?.device.name }
     var transcriberReady: Bool { transcriber != nil }
 
-    // Pipeline state, capture queue only.
+    /// Squeeze reports from the mic's USB serial console. While they arrive, the input is closed between squeezes.
+    let usb = MicSerial(match: Settings.shared.usbPort)
+    /// The pipeline queue: audio hops from every capture and the USB events run here, one at a time.
+    private let pipeline = DispatchQueue(label: "fxmic.pipeline")
+    /// The mic is reporting squeezes over USB: tone markers are ignored (pipeline copy).
+    private var usbLive = false
+    /// The same, for main-thread decisions (opening and closing the input, the menu).
+    private(set) var usbLiveMain = false
+    private var squeezeStartedAt = Date.distantPast       // pipeline
+    private var pendingTap: DispatchWorkItem?             // main
+
+    // Pipeline state, pipeline queue only.
     private var capture: InputCapture?
     private var gate = SpeechGate()
     private var chirps: ChirpDetector?
@@ -104,6 +116,20 @@ final class AppController {
 
     init() {
         startSendFileWatcher()
+        usb.log = { Log.write($0) }
+        usb.onLiveChange = { [weak self] live in
+            guard let self else { return }
+            self.pipeline.async {
+                self.usbLive = live
+                if live { self.preroll = [] }          // never feed a later squeeze audio from before it
+                DispatchQueue.main.async { self.usbLiveChanged(live) }
+            }
+        }
+        usb.onEvent = { [weak self] event in
+            guard let self else { return }
+            self.pipeline.async { self.usbEvent(event) }
+        }
+        if settings.usbTrigger { usb.start() }
         dictation.onPartial = { [weak self] text in
             guard let self, self.claudeLive, !text.isEmpty else { return }
             self.hud.partial(text)
@@ -152,8 +178,12 @@ final class AppController {
             return
         }
         do {
-            try startCapture(device: device)
-            Log.write("armed on \(device.name) at \(Int(sampleRate)) Hz")
+            if usbLiveMain {
+                Log.write("armed on \(device.name); squeezes come over USB, the input stays closed until one")
+            } else {
+                try startCapture(device: device)
+                Log.write("armed on \(device.name) at \(Int(sampleRate)) Hz")
+            }
             lastError = nil
             lastActivity = Date()
             state = .armed
@@ -175,16 +205,24 @@ final class AppController {
         }
     }
 
-    /// Opens the input and builds the detectors for it. Used by arm() and by recovery.
-    private func startCapture(device: AudioInputDevice) throws {
+    private func makeGate() -> SpeechGate {
         var config = GateConfig()
         config.openDb = settings.openDb
         config.closeDb = settings.closeDb
         config.openFrames = 5        // 50 ms of sustained energy starts a message; bumps and chirps do not count
         config.holdFrames = 60
-        gate = SpeechGate(config: config)
-        preroll = []
-        let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
+        return SpeechGate(config: config)
+    }
+
+    /// Opens the input and builds the detectors for it. Used by arm(), by recovery, and (`midSqueeze`) when a squeeze
+    /// reported over USB needs audio: the squeeze in progress and its gate are kept then.
+    private func startCapture(device: AudioInputDevice, midSqueeze: Bool = false) throws {
+        if !midSqueeze {
+            gate = makeGate()
+            preroll = []
+        }
+        let config = gate.config
+        let cap = try InputCapture(device: device, queue: pipeline) { [weak self] frame in self?.process(frame) }
         sampleRate = cap.sampleRate
         hopSeconds = Double(cap.hop) / cap.sampleRate
         transcriberGain = powf(10, settings.transcriberGainDb / 20)
@@ -199,7 +237,7 @@ final class AppController {
         Log.write(String(format: "tone threshold %.0f dB, speech threshold %.0f dB, transcriber gain %+.0f dB, locales %@",
                          chirpConfig.minLevelDb, config.openDb, settings.transcriberGainDb, settings.locales.joined(separator: ",")))
         Log.write("tones: " + (chirps?.targets.map { "\($0.name)=\($0.freqs.map { Int($0) })" }.joined(separator: " ") ?? "none"))
-        handleMode = false
+        if !midSqueeze { handleMode = false }
         cap.onStopped = { [weak self] reason in
             DispatchQueue.main.async { self?.recover(reason: reason) }
         }
@@ -228,6 +266,8 @@ final class AppController {
         Log.write("capture interrupted: \(reason); recovering in \(delay) s")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.state != .idle else { self?.recovering = false; return }
+            // Closed on purpose in the meantime (a USB-reported squeeze ended): nothing to recover.
+            guard self.capture != nil else { self.recovering = false; return }
             // Device gone (adapter or mic unplugged): hang up at once. The half-second delay above filters blips.
             guard let cap = self.capture, AudioDevices.exists(cap.device.id) else {
                 self.recovering = false
@@ -385,28 +425,20 @@ final class AppController {
             }
         }
 
-        // Handle markers from the mic's script: press opens the message, release sends it.
-        for event in chirpEvents {
+        // Handle markers from the mic's script: press opens the message, release sends it. While the mic reports
+        // squeezes over USB, the same events come from there and the tones are only logged.
+        for event in chirpEvents where !usbLive {
             guard case .onset(let target, _, _) = event else { continue }
             if target == "press", handleMode {
                 setIntent(.queue)                     // a second press tone inside a squeeze: orange pressed
             } else if target == "tap", handleMode {
                 setIntent(.draft)                     // the play tone inside a squeeze: white pressed
             } else if target == "press" {
-                lastActivity = Date()
-                if !gate.isOpen { beginUtterance() }
-                handleMode = true
-                gate.forceOpenSilently()
-                Log.write("handle pressed")
-                if settings.transcriptionEngine == "claude" { startClaudeDictation() }
-            } else if target == "cancel", handleMode, settings.shakeToCancel {
-                Log.write("shake: cancel")
-                DispatchQueue.main.async { self.canceled = true; self.hud.canceled() }
+                squeezeStarted()
+            } else if target == "cancel", handleMode {
+                shakeCancel()
             } else if target == "release", handleMode {
-                Log.write("handle released")
-                handleMode = false
-                endUtterance(frames: openFrames)
-                gate.forceClose()
+                squeezeEnded()
             }
         }
 
@@ -434,7 +466,7 @@ final class AppController {
             }
         }
 
-        for event in chirpEvents {
+        for event in chirpEvents where !usbLive {
             switch event {
             case .onset(let target, _, _):
                 // A tap while the handle is squeezed is always a cancel, spoken or not; never an app switch.
@@ -458,7 +490,7 @@ final class AppController {
     /// Feeds the recognizer, with the transcriber-only gain (clipped). The level meter, gate and markers use the
     /// unamplified signal.
     private func feedTranscriber(_ frame: [Float]) {
-        guard appleWanted, let t = transcriber else { return }      // fallback off: Apple's recognizer gets nothing
+        guard appleWanted, let t = transcriber else { return }      // fallback off: the audio only drives the meter
         if transcriberGain == 1 { t.feed(frame, sampleRate: sampleRate); return }
         t.feed(frame.map { max(-1, min(1, $0 * transcriberGain)) }, sampleRate: sampleRate)
     }
@@ -489,7 +521,8 @@ final class AppController {
 
     private func endUtterance(frames: Int) {
         handleMode = false
-        let speechSeconds = Double(speechFrames) * hopSeconds
+        // No audio reached FXMic (squeezes over USB, Claude's dictation only): the squeeze's length stands in.
+        let speechSeconds = openFrames > 0 ? Double(speechFrames) * hopSeconds : Date().timeIntervalSince(squeezeStartedAt)
         let serial = utteranceSerial
         let hadChirp = chirpDuringUtterance
         if speechSeconds >= 0.5 { autoTrim(peakDb: utterancePeak) }
@@ -548,10 +581,122 @@ final class AppController {
         }
     }
 
-    // MARK: Claude dictation
+    // MARK: squeezes (pipeline queue), from the tones or from USB
 
     /// Apple's recognizer transcribes this squeeze: always in Apple mode, and as the fallback in Claude mode.
     private var appleWanted: Bool { settings.transcriptionEngine != "claude" || settings.appleFallback }
+
+    private func squeezeStarted() {
+        lastActivity = Date()
+        squeezeStartedAt = Date()
+        if usbLive { preroll = []; gate = makeGate() }
+        if !gate.isOpen { beginUtterance() }
+        handleMode = true
+        gate.forceOpenSilently()
+        Log.write("handle pressed" + (usbLive ? " (usb)" : ""))
+        if settings.transcriptionEngine == "claude" { startClaudeDictation() }
+        // Over USB the input is closed until now; it opens for the squeeze only. It drives the level meter, and Apple's
+        // recognizer when wanted. Claude's dictation has the mic open for the squeeze anyway, so this adds no time.
+        if usbLive { DispatchQueue.main.async { self.openInput(reason: "squeeze") } }
+    }
+
+    private func squeezeEnded() {
+        Log.write("handle released" + (usbLive ? " (usb)" : ""))
+        handleMode = false
+        endUtterance(frames: openFrames)
+        gate.forceClose()
+        if usbLive { DispatchQueue.main.async { self.closeInputBetweenSqueezes() } }
+    }
+
+    private func shakeCancel() {
+        guard settings.shakeToCancel else { return }
+        Log.write("shake: cancel")
+        DispatchQueue.main.async { self.canceled = true; self.hud.canceled() }
+    }
+
+    private func usbEvent(_ event: MicSerial.Event) {
+        guard usbLive, state != .idle, !replayActive else { return }
+        switch event {
+        case .hi: break
+        case .press: if !handleMode { squeezeStarted() }
+        case .release: if handleMode { squeezeEnded() }
+        case .queue: if handleMode { setIntent(.queue) }
+        case .draft: if handleMode { setIntent(.draft) }
+        case .cancel: if handleMode { shakeCancel() }
+        case .tap: if !handleMode { DispatchQueue.main.async { self.usbTap() } }
+        }
+    }
+
+    // MARK: USB trigger (main)
+
+    /// The menu switch: watch the mic's USB console, or ignore it and always use the tones.
+    func setUSBTrigger(_ on: Bool) {
+        Log.write("mic open only while squeezing: \(on ? "on" : "off")")
+        if on { usb.start() } else { usb.stop() }       // stopping reports "not live", which reopens the input
+        snapshot()
+    }
+
+    private func usbLiveChanged(_ live: Bool) {
+        usbLiveMain = live
+        Log.write(live ? "usb: the mic reports squeezes; the input stays closed between squeezes"
+                       : "usb: no squeeze reports; listening for the marker tones")
+        snapshot()
+        guard state != .idle else { return }
+        if live {
+            closeInputBetweenSqueezes()
+        } else if capture == nil {
+            // Mid-squeeze too (cable pulled): the release tone ends it.
+            openInput(reason: "listening for tones")
+        }
+    }
+
+    /// Opens the input while armed, when it is not open yet.
+    private func openInput(reason: String) {
+        guard state != .idle, capture == nil, !recovering else { return }
+        guard let device = AudioDevices.find(settings.deviceQuery) else {
+            Log.write("no input device matching \(settings.deviceQuery)")
+            hud.hideMeter()
+            return
+        }
+        let t0 = Date()
+        do {
+            try startCapture(device: device, midSqueeze: pipeline.sync { handleMode })
+            Log.write(String(format: "input opened (%@) in %.0f ms", reason, Date().timeIntervalSince(t0) * 1000))
+        } catch {
+            Log.write("input failed to open (\(reason)): \(error)")
+            hud.hideMeter()                                     // no level to show for this squeeze
+        }
+        snapshot()
+    }
+
+    /// Closes the input when squeezes come over USB and none is in progress.
+    private func closeInputBetweenSqueezes() {
+        guard usbLiveMain, let cap = capture else { return }
+        let squeezing = pipeline.sync { handleMode }
+        guard !squeezing else { return }
+        cap.stop()
+        capture = nil
+        Log.write("input closed")
+        snapshot()
+    }
+
+    /// The mic reports each press of the play button; two within 450 ms are a double tap, like the tone detector.
+    private func usbTap() {
+        if let pending = pendingTap {
+            pending.cancel()
+            pendingTap = nil
+            tapAction(count: 2, duringSpeech: false)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingTap = nil
+            self?.tapAction(count: 1, duringSpeech: false)
+        }
+        pendingTap = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+
+    // MARK: Claude dictation
 
     /// Presses Claude's dictation button for this squeeze. Capture queue.
     private func startClaudeDictation() {

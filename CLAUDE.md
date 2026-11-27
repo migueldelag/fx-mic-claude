@@ -30,6 +30,7 @@ Tell the user what you are doing at each step; steps marked HUMAN need their han
    mic's USB-C port to the Mac with a data cable. Wait until `/dev/cu.usbmodem*` exists and a volume named
    "FX MIC DISK" is mounted (`ls /dev/cu.usbmodem* /Volumes`). Then:
    ```
+   pkill -x FXMic                               # FXMic holds the mic's serial port while it runs
    tools/build_fxmic_script.py --from-device    # reads TE's startup script from THIS mic and writes firmware/fxmic/main.py
    tools/install_disk.sh install                # copies main.py, fxmic.py and the four marker sounds to the disk
    diskutil eject "/Volumes/FX MIC DISK"
@@ -44,6 +45,8 @@ Tell the user what you are doing at each step; steps marked HUMAN need their han
 
 - Never touch the mic's serial port with `mpremote`, `pyserial`, `screen`, or anything that toggles DTR/RTS: it
   resets the mic and drops it off USB. Use `tools/mp_exec.py` (raw REPL over a plain file descriptor).
+- FXMic reads the mic's serial console for squeeze reports (`MicSerial`): read-only, no modem-line changes, held
+  exclusively. Quit FXMic before any console tool; never make FXMic write to the port.
 - `/fat/main.py` on the mic's disk REPLACES Teenage Engineering's startup. The stub in `firmware/fxmic/boot_main.py`
   must start with `import ui; ui.callback(0)` (a stale tick callback otherwise floods errors or hard-faults after a
   soft reset). It then reads the mode from `/fat/claude/mode` and either adds `/fat/claude` to `sys.path` and imports

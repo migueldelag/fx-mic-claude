@@ -26,7 +26,7 @@ public final class InputCapture {
     public private(set) var hop: Int = 480
 
     private let engine = AVAudioEngine()
-    private let queue = DispatchQueue(label: "fxmic.capture")
+    private let queue: DispatchQueue
     private var pending: [Float] = []
     private let onHop: ([Float]) -> Void
     private var configObserver: NSObjectProtocol?
@@ -38,8 +38,11 @@ public final class InputCapture {
     public var lastHopAt: Date { queue.sync { _lastHopAt } }
     public var isRunning: Bool { engine.isRunning }
 
-    public init(device: AudioInputDevice, hopSeconds: Double = 0.010, onHop: @escaping ([Float]) -> Void) throws {
+    /// `queue` is where hops are delivered; pass one to keep the pipeline on the same queue across captures.
+    public init(device: AudioInputDevice, hopSeconds: Double = 0.010, queue: DispatchQueue? = nil,
+                onHop: @escaping ([Float]) -> Void) throws {
         self.device = device
+        self.queue = queue ?? DispatchQueue(label: "fxmic.capture")
         self.onHop = onHop
         let input = engine.inputNode
         guard let unit = input.audioUnit else { throw CaptureError.noAudioUnit }
