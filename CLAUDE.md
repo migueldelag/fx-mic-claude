@@ -8,7 +8,8 @@ a few Python and zsh tools, and a script that goes on the mic's own disk. Read `
 
 Tell the user what you are doing at each step; steps marked HUMAN need their hands.
 
-1. Prerequisites: macOS 26 or newer (`sw_vers`), Xcode command line tools (`xcode-select -p`; if missing,
+1. Prerequisites: mic firmware 1.1.2 or newer (older firmware fails to load the marker sounds from `config.json`;
+   `tools/build_fxmic_script.py --from-device` prints the version), macOS 26 or newer (`sw_vers`), Xcode command line tools (`xcode-select -p`; if missing,
    HUMAN runs `xcode-select --install`), Python 3 (system one is fine). The mic's 3.5 mm output must reach a
    microphone input on the Mac: a TRS-to-TRRS adapter in the headphone jack ("External Microphone") or a USB audio
    adapter such as the Sabrent AU-UCMA ("USB Advanced Audio Device"). Check with
@@ -44,9 +45,13 @@ Tell the user what you are doing at each step; steps marked HUMAN need their han
 - Never touch the mic's serial port with `mpremote`, `pyserial`, `screen`, or anything that toggles DTR/RTS: it
   resets the mic and drops it off USB. Use `tools/mp_exec.py` (raw REPL over a plain file descriptor).
 - `/fat/main.py` on the mic's disk REPLACES Teenage Engineering's startup. The stub in `firmware/fxmic/boot_main.py`
-  must stay exactly in this order: `import ui; ui.callback(0)` first (a stale tick callback otherwise floods errors or
-  hard-faults after a soft reset), then add `/fat` to `sys.path`, then `import fxmic`. Removing `main.py` and
-  `fxmic.py` from the disk returns the mic to stock.
+  must start with `import ui; ui.callback(0)` (a stale tick callback otherwise floods errors or hard-faults after a
+  soft reset). It then reads the mode from `/fat/claude/mode` and either adds `/fat/claude` to `sys.path` and imports
+  `fxmic`, or imports TE's frozen `teenage` startup, then wraps that script's callback to watch for a 3 s hold with
+  the handle released: orange (`ui.sw(2) == 0`) saves Claude mode, white (`ui.sw(1) == 0`) saves stock. Top to
+  bottom the buttons are orange sw(2) FX, white sw(1) sample, grey sw(0) play. Keep it short and wrapped in try/except so any failure falls back to stock. Claude mode's files live in `/fat/claude/`
+  (the patched script `chdir`s there); the disk root must not hold `config.json` or marker wavs, or stock mode loads
+  them. Removing `main.py` and `claude/` returns the mic to stock.
 - Writing files to the mic's disk over the console can fail with EIO and leave a truncated file. Prefer copying from
   the Mac while the disk is mounted (`tools/install_disk.sh`); if you must write over the console, write 400-byte
   flushed pieces and verify size and checksum.

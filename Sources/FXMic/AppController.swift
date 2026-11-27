@@ -59,6 +59,13 @@ final class AppController {
     private var lastLevelPush = Date.distantPast
     private var meterLevel: Float = -60
     private var partials: [String: String] = [:]
+    /// Latest live transcript per recognizer locale for the squeeze in progress (main).
+    private var livePartials: [String: (text: String, confidence: Double)] = [:]
+    private var transcriberGain: Float = 1          // linear, from settings.transcriberGainDb at each capture start
+    /// Debug hook: FXMIC_RECORD=/path.wav saves everything the live input delivers, until FXMic stops listening.
+    private var debugRecorder: WavWriter?
+    /// Debug hook: while FXMIC_REPLAY feeds a recording, live input is ignored.
+    private var replayActive = false
 
     private let transcriberLock = NSLock()
     private var _transcriber: LiveTranscriber?
@@ -134,6 +141,12 @@ final class AppController {
             startIdleTimer()
             startHeartbeat()
             if settings.composerDelivery { ComposerDelivery.warmUp() }
+            let env = ProcessInfo.processInfo.environment
+            if let path = env["FXMIC_RECORD"], debugRecorder == nil {
+                debugRecorder = try? WavWriter(url: URL(fileURLWithPath: path), sampleRate: Int(sampleRate))
+                Log.write("debug: recording live input to \(path)")
+            }
+            if let path = env["FXMIC_REPLAY"] { replay(path) }
         } catch {
             lastError = "\(error)"
             Log.write("audio error: \(error)")
@@ -154,12 +167,18 @@ final class AppController {
         let cap = try InputCapture(device: device) { [weak self] frame in self?.process(frame) }
         sampleRate = cap.sampleRate
         hopSeconds = Double(cap.hop) / cap.sampleRate
+        transcriberGain = powf(10, settings.transcriberGainDb / 20)
+        var chirpConfig = ChirpConfig()
+        chirpConfig.minLevelDb = settings.chirpMinLevelDb
         chirps = ChirpDetector(targets: [
             ToneTarget(name: "tap", freqs: settings.chirpFreqs),
             ToneTarget(name: "press", freqs: settings.pressFreqs),
             ToneTarget(name: "release", freqs: settings.releaseFreqs),
             ToneTarget(name: "cancel", freqs: settings.cancelFreqs),
-        ], sampleRate: sampleRate, hopSeconds: hopSeconds)
+        ], sampleRate: sampleRate, hopSeconds: hopSeconds, config: chirpConfig)
+        Log.write(String(format: "tone threshold %.0f dB, speech threshold %.0f dB, transcriber gain %+.0f dB, locales %@",
+                         chirpConfig.minLevelDb, config.openDb, settings.transcriberGainDb, settings.locales.joined(separator: ",")))
+        Log.write("tones: " + (chirps?.targets.map { "\($0.name)=\($0.freqs.map { Int($0) })" }.joined(separator: " ") ?? "none"))
         handleMode = false
         cap.onStopped = { [weak self] reason in
             DispatchQueue.main.async { self?.recover(reason: reason) }
@@ -219,7 +238,9 @@ final class AppController {
     private func startHeartbeat() {
         heartbeat?.invalidate()
         heartbeat = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, self.state != .idle, !self.recovering, let cap = self.capture else { return }
+            guard let self, self.state != .idle else { return }
+            self.checkMicMode()
+            guard !self.recovering, let cap = self.capture else { return }
             if !cap.isRunning { self.recover(reason: "engine not running") }
             else if Date().timeIntervalSince(cap.lastHopAt) > 3 { self.recover(reason: "no audio for 3 s") }
             else if let bound = cap.boundDeviceID(), bound != cap.device.id {
@@ -235,6 +256,29 @@ final class AppController {
         }
     }
 
+    /// macOS applies the Control Center Mic Mode per app. Voice Isolation passes speech but silences the marker tones
+    /// within a few milliseconds, so squeezes are never seen and nothing reports an error. Warn when it is active.
+    private var lastMicMode: AVCaptureDevice.MicrophoneMode?
+    private func checkMicMode() {
+        let mode = AVCaptureDevice.activeMicrophoneMode
+        guard mode != lastMicMode else { return }
+        lastMicMode = mode
+        let name: String
+        switch mode {
+        case .standard: name = "Standard"
+        case .wideSpectrum: name = "Wide Spectrum"
+        case .voiceIsolation: name = "Voice Isolation"
+        @unknown default: name = "mode \(mode.rawValue)"
+        }
+        Log.write("mic mode: \(name)")
+        if mode == .voiceIsolation {
+            lastError = "Mic Mode is Voice Isolation: it removes the squeeze tones. Choose Standard in Control Center > Mic Mode."
+            hud.flash("Voice Isolation is on", detail: "It removes the squeeze tones. Choose Standard.", tint: .red, icon: "waveform.slash", seconds: 6)
+            AVCaptureDevice.showSystemUserInterface(.microphoneModes)
+            onStateChange?()
+        }
+    }
+
     func disarm(reason: String? = nil) {
         guard state != .idle else { return }
         idleTimer?.invalidate()
@@ -244,6 +288,7 @@ final class AppController {
         recovering = false
         capture?.stop()
         capture = nil
+        if let recorder = debugRecorder { debugRecorder = nil; recorder.close() }
         Log.write("idle" + (reason.map { ": \($0)" } ?? ""))
         state = .idle
         hud.hide()      // hanging up is silent: the menu bar handset shows the state
@@ -280,6 +325,8 @@ final class AppController {
         transcriberLock.unlock()
         guard needed else { return }
         let locales = settings.locales
+        LiveTranscriber.fastResults = settings.fastLiveText
+        LiveTranscriber.previewLane = settings.livePreview && settings.hudTranscript
         Task.detached { [self] in
             do {
                 let t = try await LiveTranscriber(locales: locales) { [weak self] update in self?.handle(update) }
@@ -300,13 +347,22 @@ final class AppController {
 
     // MARK: audio pipeline (capture queue)
 
-    private func process(_ frame: [Float]) {
+    private func process(_ frame: [Float], replayed: Bool = false) {
+        if replayActive && !replayed { return }
+        if !replayed { debugRecorder?.append(frame) }
         preroll.append(frame)
         if preroll.count > 20 { preroll.removeFirst() }
 
         let chirpEvents = chirps?.process(frame) ?? []
         let toneActive = chirps?.toneActive ?? false
         let rms = Levels.rmsDb(frame)
+
+        // Every tone onset with its level and SNR, so a missing squeeze can be told apart from a missing tone.
+        for event in chirpEvents {
+            if case .onset(let target, let level, let snr) = event {
+                Log.write(String(format: "tone %@ level %.1f dB snr %.0f dB", target, level, snr))
+            }
+        }
 
         // Handle markers from the mic's script: press opens the message, release sends it.
         for event in chirpEvents {
@@ -341,7 +397,7 @@ final class AppController {
                 speechFrames += 1
                 utterancePeak = max(utterancePeak, Levels.peakDb(frame))
             }
-            transcriber?.feed(frame, sampleRate: sampleRate)
+            feedTranscriber(frame)
             // No time cap: a message ends only on the release marker or a shake.
             // Meter ballistics: instant attack, about 150 dB/s release, pushed to the HUD on every 10 ms hop.
             meterLevel = max(rms, meterLevel - 1.5)
@@ -373,6 +429,14 @@ final class AppController {
         }
     }
 
+    /// Feeds the recognizer, with the transcriber-only gain (clipped). The level meter, gate and markers use the
+    /// unamplified signal.
+    private func feedTranscriber(_ frame: [Float]) {
+        guard let t = transcriber else { return }
+        if transcriberGain == 1 { t.feed(frame, sampleRate: sampleRate); return }
+        t.feed(frame.map { max(-1, min(1, $0 * transcriberGain)) }, sampleRate: sampleRate)
+    }
+
     private func beginUtterance() {
         utteranceSerial += 1
         speechFrames = 0
@@ -383,11 +447,11 @@ final class AppController {
         partials = [:]
         lastActivity = Date()
         transcriber?.startUtterance()
-        for f in preroll.dropLast() { transcriber?.feed(f, sampleRate: sampleRate) }
+        for f in preroll.dropLast() { feedTranscriber(f) }
         state = .listening
         activity.cancel()
         DispatchQueue.main.async { self.onActivity?(.none) }
-        DispatchQueue.main.async { self.showListeningIfNeeded() }
+        DispatchQueue.main.async { self.livePartials = [:]; self.showListeningIfNeeded() }
     }
 
     private var hudShownForSerial = -1
@@ -425,9 +489,24 @@ final class AppController {
         }
     }
 
+    /// Recognizer updates arrive per locale lane on the transcriber's tasks. The Listening bar shows the lane that is
+    /// more confident right now (the longer text on a tie), so an English sentence is not shown as its Spanish guess.
     private func handle(_ update: TranscriptUpdate) {
-        // Live text is not shown in the HUD; only recognizer diagnostics are logged.
-        if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)") }
+        if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)"); return }
+        let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if update.locale.hasSuffix("+preview") {               // the fast preview lane drives the bar on its own
+            DispatchQueue.main.async { self.hud.partial(text) }
+            return
+        }
+        if LiveTranscriber.previewLane { return }
+        DispatchQueue.main.async {
+            self.livePartials[update.locale] = (text, update.confidence)
+            let best = self.livePartials.values.max { a, b in
+                abs(a.confidence - b.confidence) > 0.02 ? a.confidence < b.confidence : a.text.count < b.text.count
+            }
+            if let best { self.hud.partial(best.text) }
+        }
     }
 
     // MARK: delivery (main)
@@ -497,6 +576,31 @@ final class AppController {
             try? FileManager.default.removeItem(at: url)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { self.deliverText(trimmed) }
+        }
+    }
+
+    /// Debug hook: FXMIC_REPLAY=/path/to.wav feeds a recording (48 kHz, for example one saved by fxmic-cal or
+    /// FXMIC_RECORD) through the live pipeline 3 s after arming, at real-time pace, with live input muted meanwhile.
+    /// Markers, transcription and delivery behave as if the audio came from the mic.
+    private func replay(_ path: String) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+                  (try? file.read(into: buffer)) != nil, let data = buffer.floatChannelData else { Log.write("replay: cannot read \(path)"); return }
+            let frames = Int(buffer.frameLength), channels = Int(buffer.format.channelCount)
+            var mono = [Float](repeating: 0, count: frames)
+            for c in 0..<channels { for i in 0..<frames { mono[i] += data[c][i] / Float(channels) } }
+            let hop = self.capture?.hop ?? 480
+            Log.write("replay: \(path) (\(frames) frames at \(Int(file.processingFormat.sampleRate)) Hz)")
+            var i = 0
+            while i + hop <= frames, let cap = self.capture {
+                let chunk = Array(mono[i..<i + hop])
+                cap.sync { self.replayActive = true; self.process(chunk, replayed: true) }
+                i += hop
+                Thread.sleep(forTimeInterval: Double(hop) / file.processingFormat.sampleRate)
+            }
+            self.capture?.sync { self.replayActive = false }
+            Log.write("replay: done")
         }
     }
 
