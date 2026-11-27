@@ -185,7 +185,105 @@ engine, or rebuild the capture on it once, or hang up. Hang-ups stay silent; the
 size) fires one, which had produced a reconnect loop at 5 Hz in the first attempt. Verified by switching the default
 output twice with a CoreAudio tool: one interruption and one restart per switch, no loop.
 
+## 2026-11-27: Claude's own dictation
+
+Dictating in the Claude app through the same FX mic came out word for word, while FXMic's transcripts of the same
+kind of audio had errors. Root cause: two different recognizers. The Claude app streams the mic
+(`getUserMedia`, noise suppression on, default input, which here is the AB13X dongle carrying the FX mic) over a
+websocket to Anthropic's server speech-to-text, with a key-terms vocabulary header. FXMic used Apple's on-device
+`SpeechTranscriber`. Measured on one sentence recorded through the FX chain and the Mac's own mic at the same time,
+both run through Apple's recognizer:
+
+| audio into Apple's recognizer | confidence | result |
+| --- | --- | --- |
+| Mac mic | 0.87 | correct |
+| Mac mic, low-passed at 7 kHz (the dongle) | 0.86 | correct |
+| Mac mic, 40 dB down and back up (FX level) | 0.88 | correct |
+| Mac mic, hard-gated between sounds (the mic's digital silence) | 0.80 | small errors |
+| FX chain | 0.54 | "test of the attack, Mike", "ground clock… lazy dot" |
+
+Band limit and level are not the problem; the gating hurts a little; Apple's model does not cope with the FX
+signal as a whole, the server model does. No gain, gate or vocabulary setting gets Apple to parity, and the Claude
+app's endpoint is internal to the app and its sign-in, so the fix is to let Claude transcribe.
+
+`ClaudeDictation` (setting `transcriptionEngine` = `claude`): on the press marker it presses the composer's
+`AXCheckBox` "Press and hold to record" (a single AXPress starts dictation; the label turns to "Stop dictation"), on
+the release marker it presses it again, waits for the label to come back and the composer text to hold still
+(0.7 to 0.9 s after release in tests), restores any draft the composer held, and hands the text to the existing
+send/queue/draft delivery, addressed to the session it was dictated in. The control is not an `AXButton` and has no
+"dictat" in its label, so the first probe missed it; `~/.fxmic/axdump` lists every control near each composer with
+its DOM id and classes. Apple's recognizer still runs alongside as the fallback, and every message logs both. First
+tests: "Recording is working. Saving as a draft." identical in both; "Using the draft right now…" from Claude,
+"Squeezing the draft. Right now…" from Apple; "Hello, this is me testing again." sent end to end at 00:32.
+
+Same day, second pass: the first version took the text back out of the composer and typed it in again through the
+usual delivery, a visible clear-and-retype of identical text. Now the text stays where Claude put it: white leaves
+it as the draft, a plain squeeze presses Send (queues if the session is busy and shows Stop), orange queues in
+Claude with Cmd+Return posted to the Claude process (it works with Claude in the background; the composer
+emptying is the check, and on failure the composer is restored and FXMic's own queue takes the text). Test: a white
+squeeze kept "Testing one, testing two, testing three. All good." (Apple, alongside: "You? 1st one, destiny two,
+destiny three. Oh, good.", 0.33), a second orange squeeze appended to it and Cmd+Return queued the whole composer.
+
+FXMic is now signed with the local "FXMic Dev" identity, so rebuilds keep the Microphone and Accessibility grants.
+
+## 2026-11-27: input closed between squeezes (USB reports)
+
+The marker tones are the only way the Mac sees a squeeze, so the input had to stay open whenever FXMic was armed and
+macOS showed the orange dot the whole time. With the mic on a USB-C data cable its CDC console is there anyway, so the
+script now also prints one line per event (`report()` in `tools/build_fxmic_script.py`: press, release, queue, draft,
+cancel, tap for the play button with the handle released, and `hi` every 120 ticks). `MicSerial` (FXMicCore) watches
+`/dev/cu.usbmodemEP*` once a second, opens it read-only with the same raw/clocal setup as `tools/mp_exec.py` (no
+writes, no modem-line changes, TIOCEXCL so a second reader gets EBUSY), and counts the port live while `fxmic` lines
+keep coming (5 s timeout). Anything else on the console is ignored and never logged.
+
+While live, tone markers are only logged; USB events drive the same squeeze code (`squeezeStarted`, `squeezeEnded`,
+`shakeCancel`, intents), on one pipeline queue shared with the audio hops. The input opens at a squeeze only when
+Apple's recognizer needs it (Apple mode, or Claude mode with `appleFallback`) and closes at the release. Claude's
+dictation has its own input, so Claude mode with the fallback off never opens FXMic's input. Without audio the
+squeeze's length stands in for the speech length in the drop rule.
+
+Tested 2026-11-27 against a pseudo-terminal standing in for the mic (`usbPort` setting, test only): input closed while
+armed; opened 72-109 ms after a press (2254 ms the first time, the dongle waking) and closed 12-16 ms after the
+release; reports stopping mid-squeeze switched to tones within 5 s with the squeeze kept, and their return closed
+the input after the release; cancel and REPL noise behaved. A first build reset `handleMode` when the input opened
+mid-squeeze, so the release was ignored; fixed (`startCapture(midSqueeze:)`). TIOCEXCL does not apply to ptys.
+
+With the mic, same day (script rebuilt from the device, firmware 1.1.2, cable left in): `fxmic hi` every 1.95 s;
+`tools/mp_exec.py` gets "busy" while FXMic runs (TIOCEXCL works on the real port). Opening the port did not reset
+the mic. Claude mode with the fallback: input opened 129-182 ms after the press, closed 19-50 ms after the release;
+draft and queue intents arrived over USB. With `appleFallback` off, a per-process CoreAudio poll
+(kAudioProcessPropertyIsRunningInput, every 0.2 s) showed only Claude Helper holding an input, from Claude's
+dictation start to 8 ms after its stop, and nothing between squeezes. The orange dot that stayed on was another app
+(a DAW) with its own input open. In that mode the Listening bar's meter had nothing to show and looked broken next to
+Claude's live text, so FXMic now opens its input for the squeeze in every mode, only for the meter when the fallback
+is off (Claude's dictation has the mic open then anyway, so the open time does not grow). The meter is hidden only if
+the input fails to open. The Canceled bar shows no meter.
+
+## 2026-11-27: a missed release kept Claude dictating
+
+On the tones (cable out), a shake-cancel at 12:00:23, release at 25.2, and a new squeeze 0.9 s later at 26.1. No
+release tone was ever heard for that squeeze, so FXMic stayed in it: Claude's dictation recorded from 28.9 until it
+stopped on its own at 12:02:12, the Listening bar had been hidden by the canceled squeeze's late result at 27.5, and
+the next release would have pressed the dictation control again (starting it, since Claude had stopped). Why the
+release tone went unheard is not known (no tone of any kind was logged after 26.1). Fixes:
+
+- A squeeze with no speech for 30 s and no release heard ends as a draft (`stuckSqueezeSeconds`). Nothing is sent
+  that was not released. Tested with a fake mic and a 5 s limit.
+- The release press only presses the dictation control, and only while it is listening (not its idle label).
+- Results of an earlier squeeze no longer touch the Listening bar of the one in progress (`activeSqueeze`).
+- Cancel is per squeeze (`canceledSerials`); before, a quick next squeeze reset the flag, so a canceled message with
+  text could have been sent.
+- A new dictation waits (up to 3 s) until the last squeeze's text in the composer has been sent, queued, kept or
+  removed, so two messages never mix; an empty Claude result clears its pending completion.
+
+None of this needs USB: every feature works on the audio adapter's tones; USB only adds the closed input.
+
 ## Open items
+
+- Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. The plain-send
+  path of the second pass (press Send in place) is not tested yet, nor dictation with the Claude window hidden.
+- `SessionStore.lastUsed()` can return a "btw" side chat that is not in the sidebar, so Apple-mode delivery fails
+  with "target session not in the sidebar".
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
 - Gesture check still pending: single tap toggle after the activation fix. "Stop" was dropped on 2026-09-13 (Miguel: "stop what"); double tap now sleeps the app.

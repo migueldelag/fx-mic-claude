@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Run Python on the EP-2350 through MicroPython's raw REPL, opening the port without touching DTR/RTS
 (pyserial's modem-line toggling resets the mic). usage: tools/mp_exec.py [-t seconds] file.py | -c "code" """
-import os, select, subprocess, sys, time, glob
+import errno, glob, os, select, subprocess, sys, time
 
 def open_port():
     ports = sorted(glob.glob("/dev/cu.usbmodem*"))
     port = next((p for p in ports if "EP" in p), ports[0] if ports else None)
     if not port: sys.exit("no EP-2350 serial port: is the mic on and connected with a USB-C data cable?")
-    subprocess.run(["stty", "-f", port, "115200", "raw", "-echo", "clocal"], check=False)
-    return os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    busy = f"{port} is busy: FXMic watches the mic's USB console for squeezes. Quit FXMic first."
+    try:
+        fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    except OSError as e:
+        if e.errno == errno.EBUSY: sys.exit(busy)
+        raise
+    if subprocess.run(["stty", "-f", port, "115200", "raw", "-echo", "clocal"], check=False,
+                      stderr=subprocess.DEVNULL).returncode != 0:
+        os.close(fd); sys.exit(busy)
+    return fd
 
 def read_until(fd, marker, timeout):
     buf = b""; end = time.time() + timeout
