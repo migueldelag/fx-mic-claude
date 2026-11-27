@@ -124,6 +124,19 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let deviceItem = NSMenuItem(title: "Input device", action: nil, keyEquivalent: "")
         deviceItem.submenu = deviceMenu
         menu.addItem(deviceItem)
+        // Mic open only while squeezing: needs the mic's USB cable, since without it the tones are the only signal and
+        // FXMic must keep the input open to hear them. The line under it says which is happening right now.
+        let usbItem = NSMenuItem(title: "Mic open only while squeezing (USB cable)", action: #selector(toggleUSB), keyEquivalent: "")
+        usbItem.target = self; usbItem.state = Settings.shared.usbTrigger ? .on : .off
+        menu.addItem(usbItem)
+        let status: String
+        if controller.usbLiveMain { status = "Now: closed between squeezes, over USB" }
+        else if Settings.shared.usbTrigger { status = "Now: mic not on USB, listening for tones" }
+        else { status = "Now: listening for tones" }
+        let trigger = NSMenuItem(title: status, action: nil, keyEquivalent: "")
+        trigger.isEnabled = false
+        trigger.indentationLevel = 1
+        menu.addItem(trigger)
         menu.addItem(.separator())
 
         // 3. target session, shown by (truncated) name
@@ -146,6 +159,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let shake = NSMenuItem(title: "Shake to cancel", action: #selector(toggleShake), keyEquivalent: "")
         shake.target = self; shake.state = Settings.shared.shakeToCancel ? .on : .off
         menu.addItem(shake)
+        let engine = NSMenuItem(title: "Transcribe with Claude's dictation", action: #selector(toggleEngine), keyEquivalent: "")
+        engine.target = self; engine.state = Settings.shared.transcriptionEngine == "claude" ? .on : .off
+        menu.addItem(engine)
+        if Settings.shared.transcriptionEngine == "claude" {
+            let fallback = NSMenuItem(title: "Apple's recognizer as fallback", action: #selector(toggleFallback), keyEquivalent: "")
+            fallback.target = self; fallback.state = Settings.shared.appleFallback ? .on : .off
+            fallback.indentationLevel = 1
+            menu.addItem(fallback)
+        }
         let badge = NSMenuItem(title: "Menu bar activity badge", action: #selector(toggleBadge), keyEquivalent: "")
         badge.target = self; badge.state = Settings.shared.statusBadge ? .on : .off
         menu.addItem(badge)
@@ -183,6 +205,19 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let title = sender.representedObject as? String ?? ""
         Settings.shared.targetSessionTitle = title.isEmpty ? nil : title
         Log.write("target: \(title.isEmpty ? "last used" : title)")
+        controller.snapshot()
+    }
+    @objc private func toggleEngine() {
+        Settings.shared.transcriptionEngine = Settings.shared.transcriptionEngine == "claude" ? "apple" : "claude"
+        Log.write("transcription engine: \(Settings.shared.transcriptionEngine)")
+    }
+    @objc private func toggleUSB() {
+        Settings.shared.usbTrigger.toggle()
+        controller.setUSBTrigger(Settings.shared.usbTrigger)
+    }
+    @objc private func toggleFallback() {
+        Settings.shared.appleFallback.toggle()
+        Log.write("apple fallback: \(Settings.shared.appleFallback ? "on" : "off")")
         controller.snapshot()
     }
     @objc private func toggleBadge() { Settings.shared.statusBadge.toggle(); refresh() }
