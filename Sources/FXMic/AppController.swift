@@ -598,8 +598,10 @@ final class AppController {
     private func deliver(_ result: UtteranceResult, speechSeconds: Double, serial: Int) {
         // Text dictated in Claude goes back to the session it was spoken into.
         let dictatedIn = dictatedSession.removeValue(forKey: serial)
+        let inComposer = result.locale == "claude"      // Claude's dictation left this text in the composer
         if canceled {
             Log.write("canceled: \(result.text)")
+            if inComposer { dictation.complete(serial: serial, action: .discard) { _ in } }
             canceled = false
             hud.hide(after: 0.3)   // the tap already flashed "Canceled"
             return
@@ -608,10 +610,15 @@ final class AppController {
         let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
         guard letters >= 2, speechSeconds >= 0.4, result.confidence >= 0.35 else {
             Log.write(String(format: "dropped: %@ (%.1fs speech, conf %.2f)", text.isEmpty ? "empty" : text, speechSeconds, result.confidence))
+            if inComposer { dictation.complete(serial: serial, action: .discard) { _ in } }
             hud.hide(after: 0.2)
             return
         }
         let intent = intents.removeValue(forKey: serial) ?? .send
+        if inComposer {
+            deliverInComposer(text, intent: intent, session: dictatedIn, serial: serial, speechSeconds: speechSeconds)
+            return
+        }
         let outcome: String
         var hudTitle = "Sent"
         if settings.composerDelivery, ComposerDelivery.isTrusted, intent != .send,
@@ -661,6 +668,57 @@ final class AppController {
         lastActivity = Date()
         hud.sent(text, outcome: outcome, title: hudTitle)
         onRecentChange?()
+    }
+
+    /// Text Claude's dictation already put in the composer stays there: white leaves it as a draft, a plain squeeze
+    /// presses Send, orange queues it in Claude (Cmd+Return). Nothing is cleared and typed again. If sending or
+    /// queueing fails, the composer is put back as it was and the text goes to FXMic's own queue or the inbox.
+    private func deliverInComposer(_ text: String, intent: Intent, session: String?, serial: Int, speechSeconds: Double) {
+        let action: ClaudeDictation.Action = intent == .draft ? .keep : intent == .queue ? .queue : .send
+        let target = session ?? settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
+        dictation.complete(serial: serial, action: action) { [weak self] result in
+            guard let self else { return }
+            let name = target ?? "Claude"
+            var title = "Sent"
+            let outcome: String
+            switch result {
+            case .success(.kept):
+                outcome = "Draft in \(name)"; title = "Draft"
+            case .success(.sent):
+                outcome = "Sent to \(name)"
+                if let target { self.watchActivity(target) }
+            case .success(.queued):
+                outcome = "Queued in Claude for \(name)"; title = "Queued"
+                if let target { self.watchActivity(target) }
+            case .success(.discarded):
+                return
+            case .failure(let error):
+                if let target {
+                    self.queued.append((text, target, Date()))
+                    outcome = "Claude did not take it (\(error)), queued in FXMic for \(target)"; title = "Queued"
+                    self.startQueue()
+                } else {
+                    outcome = self.inboxOutcome(text: text, result: UtteranceResult(text: text, locale: "claude", confidence: 1, alternatives: []), speechSeconds: speechSeconds)
+                }
+            }
+            if self.settings.targetSessionTitle != nil { self.settings.targetSessionTitle = nil }
+            Log.write(String(format: "%@: %@  [claude, %.1fs]", outcome, text, speechSeconds))
+            self.recent.insert((Date(), text, outcome), at: 0)
+            if self.recent.count > 12 { self.recent.removeLast() }
+            self.lastActivity = Date()
+            self.hud.sent(text, outcome: outcome, title: title)
+            self.onRecentChange?()
+        }
+    }
+
+    private func watchActivity(_ target: String) {
+        activity.watch(sessionTitle: target, onThinking: { [weak self] in
+            Log.write("activity: \(target) is thinking")
+            self?.onActivity?(.thinking)
+        }, onDone: { [weak self] in
+            Log.write("activity: \(target) done")
+            self?.onActivity?(.done)
+        })
     }
 
     /// Records the queue/draft choice for the squeeze in progress and shows it in the Listening bar. Capture queue.

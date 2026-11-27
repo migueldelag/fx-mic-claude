@@ -216,12 +216,20 @@ its DOM id and classes. Apple's recognizer still runs alongside as the fallback,
 tests: "Recording is working. Saving as a draft." identical in both; "Using the draft right now…" from Claude,
 "Squeezing the draft. Right now…" from Apple; "Hello, this is me testing again." sent end to end at 00:32.
 
+Same day, second pass: the first version took the text back out of the composer and typed it in again through the
+usual delivery, a visible clear-and-retype of identical text. Now the text stays where Claude put it: white leaves
+it as the draft, a plain squeeze presses Send (queues if the session is busy and shows Stop), orange queues in
+Claude with Cmd+Return posted to the Claude process (it works with Claude in the background; the composer
+emptying is the check, and on failure the composer is restored and FXMic's own queue takes the text). Test: a white
+squeeze kept "Testing one, testing two, testing three. All good." (Apple, alongside: "You? 1st one, destiny two,
+destiny three. Oh, good.", 0.33), a second orange squeeze appended to it and Cmd+Return queued the whole composer.
+
 FXMic is now signed with the local "FXMic Dev" identity, so rebuilds keep the Microphone and Accessibility grants.
 
 ## Open items
 
-- Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. Not yet tried
-  with the Claude window behind other apps, or with the target session mid-turn (its composer shows Stop, not Send).
+- Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. The plain-send
+  path of the second pass (press Send in place) is not tested yet, nor dictation with the Claude window hidden.
 - `SessionStore.lastUsed()` can return a "btw" side chat that is not in the sidebar, so Apple-mode delivery fails
   with "target session not in the sidebar".
 

@@ -12,9 +12,10 @@ import Foundation
 /// serial queue, so a squeeze's start always completes before its finish.
 final class ClaudeDictation {
     enum Failure: Error, CustomStringConvertible {
-        case notTrusted, claudeNotRunning, noComposer, noButton, notRunning
+        case notTrusted, claudeNotRunning, noComposer, noButton, notRunning, notSent
         var description: String {
             switch self {
+            case .notSent: return "the composer still holds the text"
             case .notTrusted: return "Accessibility not granted"
             case .claudeNotRunning: return "Claude is not running"
             case .noComposer: return "composer not found"
@@ -38,6 +39,8 @@ final class ClaudeDictation {
         let before: String
     }
     private var run: Run?
+    /// The last finished squeeze, whose text is still in the composer until `complete` decides what to do with it.
+    private var finished: Run?
     private var poll: DispatchSourceTimer?
     private var lastPartial = ""
 
@@ -52,6 +55,7 @@ final class ClaudeDictation {
         queue.async { [self] in
             stopPolling()
             run = nil
+            finished = nil
             let result = begin(serial: serial, target: target)
             DispatchQueue.main.async { onStarted(result) }
         }
@@ -101,7 +105,8 @@ final class ClaudeDictation {
 
     // MARK: finish
 
-    /// Presses the button again, waits for Claude's final text, puts the composer back as it was, and returns the text.
+    /// Presses the button again, waits for Claude's final text, and returns it. The text stays in the composer, where
+    /// Claude put it, until `complete` sends, queues, keeps or removes it.
     func finish(serial: Int, completion: @escaping (Result<String, Failure>) -> Void) {
         queue.async { [self] in
             stopPolling()
@@ -110,7 +115,9 @@ final class ClaudeDictation {
                 return
             }
             run = nil
-            let text = end(current)
+            var r = current
+            let text = end(&r)
+            finished = r
             DispatchQueue.main.async { completion(.success(text)) }
         }
     }
@@ -121,13 +128,14 @@ final class ClaudeDictation {
             stopPolling()
             guard let current = run else { return }
             run = nil
-            let text = end(current)
+            var r = current
+            let text = end(&r)
+            restore(&r)
             Log.write("dictation: aborted, \(text.count) chars discarded")
         }
     }
 
-    private func end(_ r: Run) -> String {
-        var r = r
+    private func end(_ r: inout Run) -> String {
         let pressedAt = Date()
         if let button = button(at: r.buttonCenter, in: r.window) {
             let l = label(button)
@@ -152,8 +160,71 @@ final class ClaudeDictation {
             if !idle, still >= 3, !last.isEmpty { Log.write("dictation: button still busy, text settled"); break }
         }
         Log.write(String(format: "dictation: finished in %.1f s, %d chars", Date().timeIntervalSince(pressedAt), last.count))
-        restore(&r)
         return last
+    }
+
+    // MARK: complete
+
+    enum Action { case keep, send, queue, discard }
+    enum Outcome { case kept, sent, queued, discarded }
+
+    /// What happens to the text Claude left in the composer: kept as a draft, sent with the Send button (queued when
+    /// the session is busy and shows Stop instead), queued in Claude with Cmd+Return, or removed. A failed send or
+    /// queue puts the composer back as it was before the squeeze, so the caller can deliver the text another way.
+    func complete(serial: Int, action: Action, completion: @escaping (Result<Outcome, Failure>) -> Void) {
+        queue.async { [self] in
+            guard var r = finished, r.serial == serial else {
+                DispatchQueue.main.async { completion(.failure(.notRunning)) }
+                return
+            }
+            finished = nil
+            let result: Result<Outcome, Failure>
+            switch action {
+            case .keep:
+                result = .success(.kept)
+            case .discard:
+                restore(&r)
+                result = .success(.discarded)
+            case .send, .queue:
+                if action == .send, let send = buttonNear(r, labeled: "Send") {
+                    AXUIElementPerformAction(send, kAXPressAction as CFString)
+                    result = composerEmpties(&r) ? .success(.sent) : .failure(.notSent)
+                } else {
+                    if action == .send { Log.write("dictation: no Send button (session busy), queueing instead") }
+                    result = queueInClaude(&r) ? .success(.queued) : .failure(.notSent)
+                }
+                if case .failure = result { restore(&r) }
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Claude's own queue: Cmd+Return in the composer, sent to the Claude process without bringing it forward.
+    private func queueInClaude(_ r: inout Run) -> Bool {
+        guard let app = ClaudeApp.running else { return false }
+        AXUIElementSetAttributeValue(r.composer, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        Thread.sleep(forTimeInterval: 0.05)
+        let source = CGEventSource(stateID: .hidSystemState)
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: down)   // Return
+            event?.flags = .maskCommand
+            event?.postToPid(app.processIdentifier)
+        }
+        let ok = composerEmpties(&r)
+        Log.write(ok ? "dictation: queued in Claude with Cmd+Return" : "dictation: Cmd+Return left the text in the composer")
+        return ok
+    }
+
+    private func composerEmpties(_ r: inout Run) -> Bool {
+        for _ in 0..<10 {
+            Thread.sleep(forTimeInterval: 0.12)
+            if value(&r).isEmpty { return true }
+        }
+        return false
+    }
+
+    private func buttonNear(_ r: Run, labeled description: String) -> AXUIElement? {
+        buttonsNear(r.composer, in: r.window).first { AX.string($0, kAXDescriptionAttribute) == description }
     }
 
     /// Leaves the composer holding what it held before the squeeze.
