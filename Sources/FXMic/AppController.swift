@@ -950,6 +950,11 @@ final class AppController {
                 try? FileManager.default.removeItem(at: dumpURL)
                 self.dictation.dump()
             }
+            let demoURL = self.dispatcher.root.appendingPathComponent("huddemo")
+            if FileManager.default.fileExists(atPath: demoURL.path) {
+                try? FileManager.default.removeItem(at: demoURL)
+                self.hudDemo()
+            }
             guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return }
             try? FileManager.default.removeItem(at: url)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -979,6 +984,30 @@ final class AppController {
             }
             self.capture?.sync { self.replayActive = false }
             Log.write("replay: done")
+        }
+    }
+
+    /// Debug hook (`touch ~/.fxmic/huddemo`): plays the Listening bar's states with made-up text, a moving meter and
+    /// nothing delivered, to check its layout and motion.
+    private func hudDemo() {
+        Log.write("debug: Listening bar demo")
+        let words = "This is the Listening bar growing as words arrive, line after line, so its motion can be checked without sending anything."
+            .split(separator: " ")
+        hud.listening(target: "demo")
+        for i in 0..<60 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(i) * 0.05) {
+                self.hud.model.level = -40 + Float(sin(Double(i) / 3) * 18)
+            }
+        }
+        for (i, _) in words.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 + Double(i) * 0.18) {
+                self.hud.partial(words[0...i].joined(separator: " "))
+            }
+        }
+        let end = 1.0 + Double(words.count) * 0.18 + 0.4
+        DispatchQueue.main.asyncAfter(deadline: .now() + end) { self.hud.sending() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + end + 0.6) {
+            self.hud.sent(words.joined(separator: " "), outcome: "demo", title: "Sent")
         }
     }
 
