@@ -149,6 +149,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let engine = NSMenuItem(title: "Transcribe with Claude's dictation", action: #selector(toggleEngine), keyEquivalent: "")
         engine.target = self; engine.state = Settings.shared.transcriptionEngine == "claude" ? .on : .off
         menu.addItem(engine)
+        if Settings.shared.transcriptionEngine == "claude" {
+            let fallback = NSMenuItem(title: "Apple's recognizer as fallback", action: #selector(toggleFallback), keyEquivalent: "")
+            fallback.target = self; fallback.state = Settings.shared.appleFallback ? .on : .off
+            fallback.indentationLevel = 1
+            menu.addItem(fallback)
+        }
         let badge = NSMenuItem(title: "Menu bar activity badge", action: #selector(toggleBadge), keyEquivalent: "")
         badge.target = self; badge.state = Settings.shared.statusBadge ? .on : .off
         menu.addItem(badge)
@@ -191,6 +197,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func toggleEngine() {
         Settings.shared.transcriptionEngine = Settings.shared.transcriptionEngine == "claude" ? "apple" : "claude"
         Log.write("transcription engine: \(Settings.shared.transcriptionEngine)")
+    }
+    @objc private func toggleFallback() {
+        Settings.shared.appleFallback.toggle()
+        Log.write("apple fallback: \(Settings.shared.appleFallback ? "on" : "off")")
+        controller.snapshot()
     }
     @objc private func toggleBadge() { Settings.shared.statusBadge.toggle(); refresh() }
     @objc private func toggleShake() { Settings.shared.shakeToCancel.toggle(); controller.snapshot() }

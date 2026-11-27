@@ -25,6 +25,7 @@ final class AppController {
             "composerDelivery": settings.composerDelivery,
             "shakeToCancel": settings.shakeToCancel,
             "captureRunning": capture?.isRunning ?? false,
+            "appleFallback": settings.appleFallback,
             "accessibilityTrusted": ComposerDelivery.isTrusted,
         ])
     }
@@ -457,7 +458,7 @@ final class AppController {
     /// Feeds the recognizer, with the transcriber-only gain (clipped). The level meter, gate and markers use the
     /// unamplified signal.
     private func feedTranscriber(_ frame: [Float]) {
-        guard let t = transcriber else { return }
+        guard appleWanted, let t = transcriber else { return }      // fallback off: Apple's recognizer gets nothing
         if transcriberGain == 1 { t.feed(frame, sampleRate: sampleRate); return }
         t.feed(frame.map { max(-1, min(1, $0 * transcriberGain)) }, sampleRate: sampleRate)
     }
@@ -471,7 +472,7 @@ final class AppController {
         canceled = false
         partials = [:]
         lastActivity = Date()
-        transcriber?.startUtterance()
+        if appleWanted { transcriber?.startUtterance() }
         for f in preroll.dropLast() { feedTranscriber(f) }
         state = .listening
         activity.cancel()
@@ -495,7 +496,7 @@ final class AppController {
         state = .armed
         let viaClaude = claudeSqueeze
         claudeSqueeze = false
-        let t = transcriber
+        let t = appleWanted ? transcriber : nil
         guard t != nil || viaClaude else {
             DispatchQueue.main.async { self.hud.flash("Transcriber not ready yet", tint: .yellow, icon: "hourglass") }
             return
@@ -548,6 +549,9 @@ final class AppController {
     }
 
     // MARK: Claude dictation
+
+    /// Apple's recognizer transcribes this squeeze: always in Apple mode, and as the fallback in Claude mode.
+    private var appleWanted: Bool { settings.transcriptionEngine != "claude" || settings.appleFallback }
 
     /// Presses Claude's dictation button for this squeeze. Capture queue.
     private func startClaudeDictation() {

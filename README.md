@@ -147,7 +147,8 @@ keeps it as a draft, a plain squeeze presses Send (or queues when the session is
 Claude with Cmd+Return. Like dictating by hand, the words are added after any draft already in the composer, and
 Send sends both. That is the same speech-to-text as clicking the mic in Claude, so the words come out
 the same. Apple's recognizer keeps running alongside as the fallback when dictation cannot start, and the log shows
-both transcripts of every message ("compare: claude: … | apple …"). The Claude window has to show a composer
+both transcripts of every message ("compare: claude: … | apple …"). Turn the fallback off with the menu's "Apple's
+recognizer as fallback" (`appleFallback`); a squeeze whose dictation fails to start is then lost. The Claude window has to show a composer
 with the mic control. Claude starts listening 0.4 to 1 s after the squeeze, so wait for "Listening" in the bar
 before talking. If Claude renames the control, list what is next to the composer with `touch ~/.fxmic/axdump`
 (written to the log) and set `defaults write com.miguel.fxmic dictationButtonLabels -array "<part of the label>"`.

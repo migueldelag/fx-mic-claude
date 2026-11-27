@@ -28,6 +28,7 @@ final class Settings {
             "transcriptionEngine": "apple",
             "dictationButtonLabels": ["hold to record", "dictat"],
             "shakeToCancel": true,
+            "appleFallback": true,
             "statusBadge": true,
             "iconIdle": "phone.down.fill",
             "iconArmed": "phone.fill",
@@ -80,5 +81,8 @@ final class Settings {
     var transcriptionEngine: String { get { d.string(forKey: "transcriptionEngine") ?? "apple" } set { d.set(newValue, forKey: "transcriptionEngine") } }
     /// Case-insensitive pieces of the dictation button's accessibility label, any of which identifies it.
     var dictationButtonLabels: [String] { d.stringArray(forKey: "dictationButtonLabels") ?? ["hold to record", "dictat"] }
+    /// With Claude's dictation: also run Apple's on-device recognizer on each squeeze, used when Claude's text is
+    /// missing. Off means FXMic does not transcribe at all.
+    var appleFallback: Bool { get { d.bool(forKey: "appleFallback") } set { d.set(newValue, forKey: "appleFallback") } }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }
 }
