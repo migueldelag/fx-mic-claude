@@ -155,6 +155,17 @@ final class HUDController {
         show()
     }
 
+    /// Claude's dictation is being started: the bar says so until Claude listens.
+    func starting() {
+        guard model.title.hasPrefix("Listening") else { return }
+        model.title = "Starting…"
+    }
+
+    func listeningReady() {
+        guard model.title == "Starting…" else { return }
+        model.title = "Listening"
+    }
+
     /// The live transcript while the handle is squeezed (and while the message is being finalized).
     func partial(_ text: String) {
         guard Settings.shared.hudTranscript, !suppressPartials,

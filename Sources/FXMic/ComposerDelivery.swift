@@ -74,25 +74,13 @@ enum ComposerDelivery {
             Thread.sleep(forTimeInterval: 0.3)     // let the new view's composer settle
         }
 
-        var composer: AXUIElement?
-        var window: AXUIElement?
-        for attempt in 0..<12 {          // the tree can take ~2 s to appear the first time
-            let windows = (attribute(axApp, kAXWindowsAttribute) as? [AXUIElement]) ?? []
-            let main = (attribute(axApp, kAXMainWindowAttribute) as! AXUIElement?) ?? windows.first
-            if let main {
-                window = main
-                composer = find(main, depth: 0) { role($0) == "AXTextArea" && string($0, kAXDescriptionAttribute) == "Prompt" }.first
-                if composer != nil { break }
-            }
-            if attempt == 11 { break }
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        guard let window else { throw Failure.noWindow }
-        guard let composer else { throw Failure.noComposer }
+        guard let found = locateComposer(axApp) else { throw Failure.noComposer }
+        let window = found.window, composer = found.composer
 
         // A draft Miguel typed is set aside, the spoken message is sent on its own, and the draft is put back.
+        // A composer that already holds exactly this text (Claude's own dictation left it there) holds no draft.
         let before = string(composer, kAXValueAttribute).trimmingCharacters(in: .whitespacesAndNewlines)
-        let draft: String? = (!before.isEmpty && !before.lowercased().hasPrefix("type /")) ? before : nil
+        let draft: String? = (!before.isEmpty && !before.lowercased().hasPrefix("type /") && before != text) ? before : nil
         if !pressSend {
             let combined = draft.map { $0 + " " + text } ?? text
             var readback = ""
@@ -139,22 +127,35 @@ enum ComposerDelivery {
         if string(composer, kAXValueAttribute).hasPrefix(text.prefix(40)) { throw Failure.notSent }
     }
 
+    /// The main window and its composer. The tree can take ~2 s to appear the first time.
+    static func locateComposer(_ axApp: AXUIElement) -> (window: AXUIElement, composer: AXUIElement)? {
+        for attempt in 0..<12 {
+            let windows = (attribute(axApp, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+            if let main = (attribute(axApp, kAXMainWindowAttribute) as! AXUIElement?) ?? windows.first,
+               let composer = find(main, depth: 0, { role($0) == "AXTextArea" && string($0, kAXDescriptionAttribute) == "Prompt" }).first {
+                return (main, composer)
+            }
+            if attempt < 11 { Thread.sleep(forTimeInterval: 0.25) }
+        }
+        return nil
+    }
+
     // MARK: helpers
 
-    private static func attribute(_ el: AXUIElement, _ name: String) -> AnyObject? {
+    static func attribute(_ el: AXUIElement, _ name: String) -> AnyObject? {
         var v: AnyObject?
         return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
     }
-    private static func string(_ el: AXUIElement, _ name: String) -> String { attribute(el, name) as? String ?? "" }
-    private static func role(_ el: AXUIElement) -> String { string(el, kAXRoleAttribute) }
-    private static func children(_ el: AXUIElement) -> [AXUIElement] { (attribute(el, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
-    private static func frame(_ el: AXUIElement) -> CGRect {
+    static func string(_ el: AXUIElement, _ name: String) -> String { attribute(el, name) as? String ?? "" }
+    static func role(_ el: AXUIElement) -> String { string(el, kAXRoleAttribute) }
+    static func children(_ el: AXUIElement) -> [AXUIElement] { (attribute(el, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
+    static func frame(_ el: AXUIElement) -> CGRect {
         var p = CGPoint.zero, s = CGSize.zero
         if let pv = attribute(el, kAXPositionAttribute) { AXValueGetValue(pv as! AXValue, .cgPoint, &p) }
         if let sv = attribute(el, kAXSizeAttribute) { AXValueGetValue(sv as! AXValue, .cgSize, &s) }
         return CGRect(origin: p, size: s)
     }
-    private static func find(_ el: AXUIElement, depth: Int, _ pred: (AXUIElement) -> Bool) -> [AXUIElement] {
+    static func find(_ el: AXUIElement, depth: Int, _ pred: (AXUIElement) -> Bool) -> [AXUIElement] {
         var out: [AXUIElement] = []
         if pred(el) { out.append(el) }
         if depth < 80 { for c in children(el) { out += find(c, depth: depth + 1, pred) } }

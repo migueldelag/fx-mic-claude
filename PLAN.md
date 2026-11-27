@@ -185,7 +185,45 @@ engine, or rebuild the capture on it once, or hang up. Hang-ups stay silent; the
 size) fires one, which had produced a reconnect loop at 5 Hz in the first attempt. Verified by switching the default
 output twice with a CoreAudio tool: one interruption and one restart per switch, no loop.
 
+## 2026-11-27: Claude's own dictation
+
+Dictating in the Claude app through the same FX mic came out word for word, while FXMic's transcripts of the same
+kind of audio had errors. Root cause: two different recognizers. The Claude app streams the mic
+(`getUserMedia`, noise suppression on, default input, which here is the AB13X dongle carrying the FX mic) over a
+websocket to Anthropic's server speech-to-text, with a key-terms vocabulary header. FXMic used Apple's on-device
+`SpeechTranscriber`. Measured on one sentence recorded through the FX chain and the Mac's own mic at the same time,
+both run through Apple's recognizer:
+
+| audio into Apple's recognizer | confidence | result |
+| --- | --- | --- |
+| Mac mic | 0.87 | correct |
+| Mac mic, low-passed at 7 kHz (the dongle) | 0.86 | correct |
+| Mac mic, 40 dB down and back up (FX level) | 0.88 | correct |
+| Mac mic, hard-gated between sounds (the mic's digital silence) | 0.80 | small errors |
+| FX chain | 0.54 | "test of the attack, Mike", "ground clock… lazy dot" |
+
+Band limit and level are not the problem; the gating hurts a little; Apple's model does not cope with the FX
+signal as a whole, the server model does. No gain, gate or vocabulary setting gets Apple to parity, and the Claude
+app's endpoint is internal to the app and its sign-in, so the fix is to let Claude transcribe.
+
+`ClaudeDictation` (setting `transcriptionEngine` = `claude`): on the press marker it presses the composer's
+`AXCheckBox` "Press and hold to record" (a single AXPress starts dictation; the label turns to "Stop dictation"), on
+the release marker it presses it again, waits for the label to come back and the composer text to hold still
+(0.7 to 0.9 s after release in tests), restores any draft the composer held, and hands the text to the existing
+send/queue/draft delivery, addressed to the session it was dictated in. The control is not an `AXButton` and has no
+"dictat" in its label, so the first probe missed it; `~/.fxmic/axdump` lists every control near each composer with
+its DOM id and classes. Apple's recognizer still runs alongside as the fallback, and every message logs both. First
+tests: "Recording is working. Saving as a draft." identical in both; "Using the draft right now…" from Claude,
+"Squeezing the draft. Right now…" from Apple; "Hello, this is me testing again." sent end to end at 00:32.
+
+FXMic is now signed with the local "FXMic Dev" identity, so rebuilds keep the Microphone and Accessibility grants.
+
 ## Open items
+
+- Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. Not yet tried
+  with the Claude window behind other apps, or with the target session mid-turn (its composer shows Stop, not Send).
+- `SessionStore.lastUsed()` can return a "btw" side chat that is not in the sidebar, so Apple-mode delivery fails
+  with "target session not in the sidebar".
 
 - Load `packs/claude-pack/` on the mic (needs the USB-C cable for a minute).
 - Gesture check still pending: single tap toggle after the activation fix. "Stop" was dropped on 2026-09-13 (Miguel: "stop what"); double tap now sleeps the app.

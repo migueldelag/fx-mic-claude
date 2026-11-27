@@ -138,6 +138,18 @@ With Accessibility granted, spoken messages go to whatever Claude view is open, 
 `/fxmic` in a Claude Code session to receive messages through the file inbox at `~/.fxmic/inbox/`; the skill is in
 `claude/skills/fxmic/SKILL.md`, copy it to `~/.claude/skills/fxmic/`.
 
+**Claude's own dictation (optional, recommended for accuracy).** By default FXMic transcribes with Apple's
+on-device recognizer. Turn on "Transcribe with Claude's dictation" in the menu (or
+`defaults write com.miguel.fxmic transcriptionEngine claude`) and a squeeze drives the Claude app's own dictation
+instead: FXMic presses the mic control next to the composer ("Press and hold to record") through Accessibility,
+presses it again on release, takes the text Claude wrote into the composer, and sends, queues or drafts it in the
+session it was spoken into. That is the same speech-to-text as clicking the mic in Claude, so the words come out
+the same. Apple's recognizer keeps running alongside as the fallback when dictation cannot start, and the log shows
+both transcripts of every message ("compare: claude: … | apple …"). The Claude window has to show a composer
+with the mic control. Claude starts listening 0.4 to 1 s after the squeeze, so wait for "Listening" in the bar
+before talking. If Claude renames the control, list what is next to the composer with `touch ~/.fxmic/axdump`
+(written to the log) and set `defaults write com.miguel.fxmic dictationButtonLabels -array "<part of the label>"`.
+
 ## Band-limited or quiet adapters
 
 The default markers sit at 12 to 18.5 kHz. Some cheap USB-C audio dongles sample their mic input at a low internal

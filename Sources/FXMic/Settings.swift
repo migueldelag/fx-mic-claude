@@ -25,6 +25,8 @@ final class Settings {
             "livePreview": true,
             "autoGain": true,
             "composerDelivery": true,
+            "transcriptionEngine": "apple",
+            "dictationButtonLabels": ["hold to record", "dictat"],
             "shakeToCancel": true,
             "statusBadge": true,
             "iconIdle": "phone.down.fill",
@@ -73,5 +75,10 @@ final class Settings {
     var statusBadge: Bool { get { d.bool(forKey: "statusBadge") } set { d.set(newValue, forKey: "statusBadge") } }
     var shakeToCancel: Bool { get { d.bool(forKey: "shakeToCancel") } set { d.set(newValue, forKey: "shakeToCancel") } }
     var composerDelivery: Bool { get { d.bool(forKey: "composerDelivery") } set { d.set(newValue, forKey: "composerDelivery") } }
+    /// "apple": Apple's on-device recognizer transcribes. "claude": a squeeze drives the Claude app's own dictation
+    /// (the same server speech-to-text as dictating in Claude by hand); Apple's runs alongside as the fallback.
+    var transcriptionEngine: String { get { d.string(forKey: "transcriptionEngine") ?? "apple" } set { d.set(newValue, forKey: "transcriptionEngine") } }
+    /// Case-insensitive pieces of the dictation button's accessibility label, any of which identifies it.
+    var dictationButtonLabels: [String] { d.stringArray(forKey: "dictationButtonLabels") ?? ["hold to record", "dictat"] }
     var selectedTargetID: String? { get { d.string(forKey: "selectedTargetID") } set { d.set(newValue, forKey: "selectedTargetID") } }
 }

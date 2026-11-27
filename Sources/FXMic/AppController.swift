@@ -36,6 +36,14 @@ final class AppController {
     let hud = HUDController()
     let dispatcher = Dispatcher()
     private let activity = ActivityWatcher()
+    /// Claude's own dictation, used when settings.transcriptionEngine is "claude".
+    let dictation = ClaudeDictation()
+    /// The squeeze in progress is being dictated in Claude (capture queue).
+    private var claudeSqueeze = false
+    /// Claude is listening for the squeeze in progress, so its composer text drives the Listening bar (main).
+    private var claudeLive = false
+    /// The session each Claude-dictated squeeze was spoken into; its text is delivered there (main).
+    private var dictatedSession: [Int: String] = [:]
     private(set) var recent: [(date: Date, text: String, outcome: String)] = []
     private(set) var lastError: String?
     var deviceName: String? { capture?.device.name }
@@ -95,6 +103,10 @@ final class AppController {
 
     init() {
         startSendFileWatcher()
+        dictation.onPartial = { [weak self] text in
+            guard let self, self.claudeLive, !text.isEmpty else { return }
+            self.hud.partial(text)
+        }
     }
 
     private var lastToggle = Date.distantPast
@@ -296,6 +308,7 @@ final class AppController {
         capture?.stop()
         capture = nil
         if let recorder = debugRecorder { debugRecorder = nil; recorder.close() }
+        if claudeSqueeze { claudeSqueeze = false; dictation.abort() }
         Log.write("idle" + (reason.map { ": \($0)" } ?? ""))
         state = .idle
         hud.hide()      // hanging up is silent: the menu bar handset shows the state
@@ -384,6 +397,7 @@ final class AppController {
                 handleMode = true
                 gate.forceOpenSilently()
                 Log.write("handle pressed")
+                if settings.transcriptionEngine == "claude" { startClaudeDictation() }
             } else if target == "cancel", handleMode, settings.shakeToCancel {
                 Log.write("shake: cancel")
                 DispatchQueue.main.async { self.canceled = true; self.hud.canceled() }
@@ -479,7 +493,10 @@ final class AppController {
         let hadChirp = chirpDuringUtterance
         if speechSeconds >= 0.5 { autoTrim(peakDb: utterancePeak) }
         state = .armed
-        guard let t = transcriber else {
+        let viaClaude = claudeSqueeze
+        claudeSqueeze = false
+        let t = transcriber
+        guard t != nil || viaClaude else {
             DispatchQueue.main.async { self.hud.flash("Transcriber not ready yet", tint: .yellow, icon: "hourglass") }
             return
         }
@@ -496,7 +513,10 @@ final class AppController {
             if hadSpeech { self.hud.sending(label) } else { self.hud.hide(after: 0.15) }
         }
         Task.detached { [self] in
-            let result = await t.finishUtterance()
+            // Claude's dictation and Apple's recognizer finish side by side; Claude's text wins, Apple's is the fallback.
+            async let claude = viaClaude ? self.finishClaudeDictation(serial: serial) : nil
+            let apple = await t?.finishUtterance() ?? UtteranceResult(text: "", locale: "", confidence: 0, alternatives: [])
+            let result = self.pick(apple: apple, claude: await claude)
             // A tap during speech resolves up to 450 ms after the release; give it time to cancel.
             let delay: TimeInterval = hadChirp ? 0.6 : 0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -510,6 +530,7 @@ final class AppController {
     /// more confident right now (the longer text on a tie), so an English sentence is not shown as its Spanish guess.
     private func handle(_ update: TranscriptUpdate) {
         if update.text.hasPrefix("[") { Log.write("recognizer \(update.locale): \(update.text)"); return }
+        if claudeLive { return }                                // Claude's own text is in the bar
         let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         if update.locale.hasSuffix("+preview") {               // the fast preview lane drives the bar on its own
@@ -526,9 +547,57 @@ final class AppController {
         }
     }
 
+    // MARK: Claude dictation
+
+    /// Presses Claude's dictation button for this squeeze. Capture queue.
+    private func startClaudeDictation() {
+        claudeSqueeze = true
+        let serial = utteranceSerial
+        let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
+        DispatchQueue.main.async { self.hud.starting() }
+        dictation.start(serial: serial, target: target) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let session):
+                self.claudeLive = true
+                if !session.isEmpty { self.dictatedSession[serial] = session }
+                self.hud.listeningReady()
+            case .failure(let error):
+                Log.write("dictation: could not start (\(error)), Apple's recognizer takes this message")
+                self.claudeLive = false
+                self.hud.listeningReady()
+            }
+        }
+    }
+
+    private func finishClaudeDictation(serial: Int) async -> Result<String, ClaudeDictation.Failure> {
+        await withCheckedContinuation { continuation in
+            dictation.finish(serial: serial) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// Claude's text when it has any, otherwise Apple's. Both are logged so the two can be compared.
+    private func pick(apple: UtteranceResult, claude: Result<String, ClaudeDictation.Failure>?) -> UtteranceResult {
+        DispatchQueue.main.async { self.claudeLive = false }
+        guard let claude else { return apple }
+        let appleLine = String(format: "apple [%@ %.2f]: %@", apple.locale, apple.confidence, apple.text.isEmpty ? "(empty)" : apple.text)
+        switch claude {
+        case .success(let text) where !text.isEmpty:
+            Log.write("compare: claude: \(text) | \(appleLine)")
+            return UtteranceResult(text: text, locale: "claude", confidence: 1, alternatives: [])
+        case .success:
+            Log.write("compare: claude: (empty), using Apple's | \(appleLine)")
+        case .failure(let error):
+            Log.write("compare: claude failed (\(error)), using Apple's | \(appleLine)")
+        }
+        return apple
+    }
+
     // MARK: delivery (main)
 
     private func deliver(_ result: UtteranceResult, speechSeconds: Double, serial: Int) {
+        // Text dictated in Claude goes back to the session it was spoken into.
+        let dictatedIn = dictatedSession.removeValue(forKey: serial)
         if canceled {
             Log.write("canceled: \(result.text)")
             canceled = false
@@ -546,7 +615,7 @@ final class AppController {
         let outcome: String
         var hudTitle = "Sent"
         if settings.composerDelivery, ComposerDelivery.isTrusted, intent != .send,
-           let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title {
+           let target = dictatedIn ?? settings.targetSessionTitle ?? SessionStore.lastUsed()?.title {
             if intent == .draft {
                 do {
                     try ComposerDelivery.send(text, toSessionTitled: target, pressSend: false)
@@ -566,7 +635,7 @@ final class AppController {
             if settings.targetSessionTitle != nil { settings.targetSessionTitle = nil }
         } else if settings.composerDelivery, ComposerDelivery.isTrusted {
             do {
-                let target = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
+                let target = dictatedIn ?? settings.targetSessionTitle ?? SessionStore.lastUsed()?.title
                 try ComposerDelivery.send(text, toSessionTitled: target)
                 outcome = target.map { "Sent to \($0)" } ?? "Sent to Claude"
                 if settings.targetSessionTitle != nil { settings.targetSessionTitle = nil }   // it is the last used now
@@ -648,7 +717,13 @@ final class AppController {
     private func startSendFileWatcher() {
         let url = dispatcher.root.appendingPathComponent("send.txt")
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self, let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return }
+            guard let self else { return }
+            let dumpURL = self.dispatcher.root.appendingPathComponent("axdump")
+            if FileManager.default.fileExists(atPath: dumpURL.path) {
+                try? FileManager.default.removeItem(at: dumpURL)
+                self.dictation.dump()
+            }
+            guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return }
             try? FileManager.default.removeItem(at: url)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { self.deliverText(trimmed) }
