@@ -163,8 +163,9 @@ Send sends both. That is the same speech-to-text as clicking the mic in Claude, 
 the same. Apple's recognizer keeps running alongside as the fallback when dictation cannot start, and the log shows
 both transcripts of every message ("compare: claude: … | apple …"). Turn the fallback off with the menu's "Apple's
 recognizer as fallback" (`appleFallback`); a squeeze whose dictation fails to start is then lost. The Claude window has to show a composer
-with the mic control. Claude starts listening 0.4 to 1 s after the squeeze, so wait for "Listening" in the bar
-before talking. If Claude renames the control, list what is next to the composer with `touch ~/.fxmic/axdump`
+with the mic control. Claude starts listening 0.4 to 1 s after the squeeze: until then the bar is grey with a spinner
+and "Starting…", then it turns yellow with "Listening" and the name of the conversation the words go to. Wait for
+the yellow before talking. If Claude renames the control, list what is next to the composer with `touch ~/.fxmic/axdump`
 (written to the log) and set `defaults write com.miguel.fxmic dictationButtonLabels -array "<part of the label>"`.
 
 ## Band-limited or quiet adapters

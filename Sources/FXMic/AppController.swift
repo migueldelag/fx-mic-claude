@@ -529,10 +529,23 @@ final class AppController {
     }
 
     private var hudShownForSerial = -1
+    /// Where Apple-mode text will go: the session picked in the menu, else the last used one, else the inbox target.
+    private var expectedTarget: String? {
+        if settings.composerDelivery, ComposerDelivery.isTrusted,
+           let title = settings.targetSessionTitle ?? SessionStore.lastUsed()?.title { return title }
+        return dispatcher.currentTarget?.title ?? "No session armed: will copy to the clipboard"
+    }
+
     private func showListeningIfNeeded() {
         guard state == .listening, hudShownForSerial != utteranceSerial else { return }
         hudShownForSerial = utteranceSerial
-        hud.listening(target: dispatcher.currentTarget?.title ?? "No session armed, will copy to clipboard")
+        if settings.transcriptionEngine == "claude" {
+            // The conversation is known once Claude's dictation starts in it; until then the bar is grey.
+            hud.listening(target: nil)
+            hud.starting()
+        } else {
+            hud.listening(target: expectedTarget)
+        }
     }
 
     private func endUtterance(frames: Int) {
@@ -730,11 +743,11 @@ final class AppController {
             case .success(let session):
                 self.claudeLive = true
                 if !session.isEmpty { self.dictatedSession[serial] = session }
-                self.hud.listeningReady()
+                self.hud.listeningReady(session: session)
             case .failure(let error):
                 Log.write("dictation: could not start (\(error)), Apple's recognizer takes this message")
                 self.claudeLive = false
-                self.hud.listeningReady()
+                self.hud.listeningReady(session: self.expectedTarget)
             }
         }
     }
@@ -993,18 +1006,20 @@ final class AppController {
         Log.write("debug: Listening bar demo")
         let words = "This is the Listening bar growing as words arrive, line after line, so its motion can be checked without sending anything."
             .split(separator: " ")
-        hud.listening(target: "demo")
+        hud.listening(target: nil)
+        hud.starting()                                       // grey until "Claude" listens
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self.hud.listeningReady(session: "Demo conversation") }
         for i in 0..<60 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(i) * 0.05) {
                 self.hud.model.level = -40 + Float(sin(Double(i) / 3) * 18)
             }
         }
         for (i, _) in words.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 + Double(i) * 0.18) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4 + Double(i) * 0.18) {
                 self.hud.partial(words[0...i].joined(separator: " "))
             }
         }
-        let end = 1.0 + Double(words.count) * 0.18 + 0.4
+        let end = 1.4 + Double(words.count) * 0.18 + 0.4
         DispatchQueue.main.asyncAfter(deadline: .now() + end) { self.hud.sending() }
         DispatchQueue.main.asyncAfter(deadline: .now() + end + 0.6) {
             self.hud.sent(words.joined(separator: " "), outcome: "demo", title: "Sent")
