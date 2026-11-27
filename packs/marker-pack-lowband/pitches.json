@@ -1,0 +1,18 @@
+{
+ "chirpFreqs": [
+  4000,
+  5400
+ ],
+ "cancelFreqs": [
+  3400,
+  4800
+ ],
+ "pressFreqs": [
+  4300,
+  5700
+ ],
+ "releaseFreqs": [
+  3700,
+  5100
+ ]
+}

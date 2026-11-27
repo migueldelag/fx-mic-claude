@@ -38,6 +38,8 @@ public final class LiveTranscriber {
         let continuation: AsyncStream<AnalyzerInput>.Continuation
         let state: LaneState
         let resultsTask: Task<Void, Never>
+        /// A fast-results lane that only feeds the live preview; its text is never a final candidate.
+        var preview = false
     }
 
     private let localeIDs: [String]
@@ -84,11 +86,20 @@ public final class LiveTranscriber {
         analyzerFormat.map { "\(Int($0.sampleRate)) Hz \($0.channelCount) ch \($0.commonFormat == .pcmFormatFloat32 ? "float32" : $0.commonFormat == .pcmFormatInt16 ? "int16" : "fmt\($0.commonFormat.rawValue)")" } ?? "?"
     }
 
-    private static func makeTranscriber(_ id: String) -> SpeechTranscriber {
+    /// Ask the recognizer for faster live results. It also lowers final accuracy (measured: confidence -0.01 to
+    /// -0.10 on five recordings, one word changed), so it is off unless set before the transcriber is created.
+    nonisolated(unsafe) public static var fastResults = false
+
+    /// Run an extra fast-results lane for the first locale whose updates are reported with the locale suffixed
+    /// "+preview". Live text then arrives about every second (first words ~0.9 s after speech starts instead of a
+    /// ~3.8 s burst), while the final text still comes from the accurate lanes. Set before the transcriber is created.
+    nonisolated(unsafe) public static var previewLane = false
+
+    private static func makeTranscriber(_ id: String, fast: Bool = LiveTranscriber.fastResults) -> SpeechTranscriber {
         SpeechTranscriber(
             locale: Locale(identifier: id),
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
+            reportingOptions: fast ? [.volatileResults, .fastResults] : [.volatileResults],
             attributeOptions: [.transcriptionConfidence])
     }
 
@@ -102,8 +113,11 @@ public final class LiveTranscriber {
         guard proceed else { return }
         utteranceSerial += 1
         var fresh: [Lane] = []
-        for id in localeIDs {
-            let transcriber = LiveTranscriber.makeTranscriber(id)
+        var specs = localeIDs.map { (id: $0, preview: false) }
+        if LiveTranscriber.previewLane, !LiveTranscriber.fastResults, let first = localeIDs.first { specs.append((first, true)) }
+        for (id, preview) in specs {
+            let transcriber = LiveTranscriber.makeTranscriber(id, fast: preview || LiveTranscriber.fastResults)
+            let reported = preview ? id + "+preview" : id
             let analyzer = SpeechAnalyzer(modules: [transcriber], options: SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .processLifetime))
             let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
             let state = LaneState()
@@ -117,14 +131,14 @@ public final class LiveTranscriber {
             let task = Task { [weak self] in
                 do {
                     for try await result in transcriber.results {
-                        self?.handle(result, locale: id, state: state)
+                        self?.handle(result, locale: reported, state: state)
                     }
                 } catch {
                     self?.onUpdate(TranscriptUpdate(locale: id, text: "[results error: \(error)]", confidence: 0, isFinal: true))
                 }
                 self?.stateQueue.sync { state.done = true }
             }
-            fresh.append(Lane(locale: id, analyzer: analyzer, continuation: continuation, state: state, resultsTask: task))
+            fresh.append(Lane(locale: id, analyzer: analyzer, continuation: continuation, state: state, resultsTask: task, preview: preview))
         }
         let backlog: [AVAudioPCMBuffer] = stateQueue.sync {
             lanes = fresh
@@ -248,7 +262,7 @@ public final class LiveTranscriber {
         }
         var candidates: [(locale: String, text: String, confidence: Double)] = []
         stateQueue.sync {
-            for lane in current {
+            for lane in current where !lane.preview {
                 let s = lane.state
                 let finalText = s.finals.joined(separator: " ")
                 if !finalText.isEmpty {
