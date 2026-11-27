@@ -259,6 +259,25 @@ Claude's live text, so FXMic now opens its input for the squeeze in every mode, 
 is off (Claude's dictation has the mic open then anyway, so the open time does not grow). The meter is hidden only if
 the input fails to open. The Canceled bar shows no meter.
 
+## 2026-11-27: a missed release kept Claude dictating
+
+On the tones (cable out), a shake-cancel at 12:00:23, release at 25.2, and a new squeeze 0.9 s later at 26.1. No
+release tone was ever heard for that squeeze, so FXMic stayed in it: Claude's dictation recorded from 28.9 until it
+stopped on its own at 12:02:12, the Listening bar had been hidden by the canceled squeeze's late result at 27.5, and
+the next release would have pressed the dictation control again (starting it, since Claude had stopped). Why the
+release tone went unheard is not known (no tone of any kind was logged after 26.1). Fixes:
+
+- A squeeze with no speech for 30 s and no release heard ends as a draft (`stuckSqueezeSeconds`). Nothing is sent
+  that was not released. Tested with a fake mic and a 5 s limit.
+- The release press only presses the dictation control, and only while it is listening (not its idle label).
+- Results of an earlier squeeze no longer touch the Listening bar of the one in progress (`activeSqueeze`).
+- Cancel is per squeeze (`canceledSerials`); before, a quick next squeeze reset the flag, so a canceled message with
+  text could have been sent.
+- A new dictation waits (up to 3 s) until the last squeeze's text in the composer has been sent, queued, kept or
+  removed, so two messages never mix; an empty Claude result clears its pending completion.
+
+None of this needs USB: every feature works on the audio adapter's tones; USB only adds the closed input.
+
 ## Open items
 
 - Claude dictation: start takes 0.4 to 1 s after the squeeze; words before "Listening" can be lost. The plain-send

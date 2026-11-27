@@ -29,6 +29,7 @@ final class Settings {
             "dictationButtonLabels": ["hold to record", "dictat"],
             "shakeToCancel": true,
             "usbTrigger": true,
+            "stuckSqueezeSeconds": 30.0,
             "appleFallback": true,
             "statusBadge": true,
             "iconIdle": "phone.down.fill",
@@ -84,6 +85,8 @@ final class Settings {
     var dictationButtonLabels: [String] { d.stringArray(forKey: "dictationButtonLabels") ?? ["hold to record", "dictat"] }
     /// Take squeezes from the mic's USB serial console when it reports them, and keep the audio input closed between
     /// squeezes. Without reports (mic on batteries, old script) FXMic listens for the marker tones.
+    /// A squeeze with no speech for this long and no release heard ends as a draft (a missed release tone). 0 = never.
+    var stuckSqueezeSeconds: Double { d.double(forKey: "stuckSqueezeSeconds") }
     var usbTrigger: Bool { get { d.bool(forKey: "usbTrigger") } set { d.set(newValue, forKey: "usbTrigger") } }
     /// With Claude's dictation: also run Apple's on-device recognizer on each squeeze, used when Claude's text is
     /// missing. Off means FXMic does not transcribe at all (and, with squeezes over USB, never opens the input).

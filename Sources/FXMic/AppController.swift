@@ -75,7 +75,12 @@ final class AppController {
     private var utterancePeak: Float = -160
     private var chirpDuringUtterance = false
     private var lastSpeechChirp = Date.distantPast
-    private var canceled = false
+    private var canceled = false                     // the squeeze in progress was canceled: no meter (pipeline)
+    /// Squeezes canceled with a shake; their text is never delivered (main).
+    private var canceledSerials = Set<Int>()
+    /// The squeeze in progress, if any: results of earlier squeezes do not touch its Listening bar (main).
+    private var activeSqueeze: Int?
+    private var lastSpeechAt = Date.distantPast        // pipeline
     private var utteranceSerial = 0
     private var lastLevelPush = Date.distantPast
     private var meterLevel: Float = -60
@@ -453,6 +458,7 @@ final class AppController {
             openFrames += 1
             if !toneActive, rms > gate.config.openDb {
                 speechFrames += 1
+                lastSpeechAt = Date()
                 utterancePeak = max(utterancePeak, Levels.peakDb(frame))
             }
             feedTranscriber(frame)
@@ -464,6 +470,15 @@ final class AppController {
                 let shown = meterLevel
                 DispatchQueue.main.async { self.hud.model.level = shown }
             }
+        }
+
+        // A release that was never heard (a missed tone) would keep the squeeze, and Claude's dictation, open for good.
+        // After this long without speech the squeeze ends as a draft: nothing is sent that was not released.
+        let limit = settings.stuckSqueezeSeconds
+        if handleMode, limit > 0, Date().timeIntervalSince(max(lastSpeechAt, squeezeStartedAt)) > limit {
+            Log.write(String(format: "no speech for %.0f s and no release heard: ending the squeeze as a draft", limit))
+            setIntent(.draft)
+            squeezeEnded()
         }
 
         for event in chirpEvents where !usbLive {
@@ -509,7 +524,8 @@ final class AppController {
         state = .listening
         activity.cancel()
         DispatchQueue.main.async { self.onActivity?(.none) }
-        DispatchQueue.main.async { self.livePartials = [:]; self.showListeningIfNeeded() }
+        let serial = utteranceSerial
+        DispatchQueue.main.async { self.activeSqueeze = serial; self.livePartials = [:]; self.showListeningIfNeeded() }
     }
 
     private var hudShownForSerial = -1
@@ -537,7 +553,8 @@ final class AppController {
         let hadSpeech = speechSeconds >= 0.3
         DispatchQueue.main.async {
             self.pendingDeliveries += 1
-            if self.canceled { return }
+            if self.activeSqueeze == serial { self.activeSqueeze = nil }
+            if self.canceledSerials.contains(serial) { return }
             let label: String
             switch self.intents[serial] ?? .send {
             case .draft: label = "Adding to draft…"
@@ -550,7 +567,7 @@ final class AppController {
             // Claude's dictation and Apple's recognizer finish side by side; Claude's text wins, Apple's is the fallback.
             async let claude = viaClaude ? self.finishClaudeDictation(serial: serial) : nil
             let apple = await t?.finishUtterance() ?? UtteranceResult(text: "", locale: "", confidence: 0, alternatives: [])
-            let result = self.pick(apple: apple, claude: await claude)
+            let result = self.pick(apple: apple, claude: await claude, serial: serial)
             // A tap during speech resolves up to 450 ms after the release; give it time to cancel.
             let delay: TimeInterval = hadChirp ? 0.6 : 0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -589,6 +606,7 @@ final class AppController {
     private func squeezeStarted() {
         lastActivity = Date()
         squeezeStartedAt = Date()
+        lastSpeechAt = .distantPast
         if usbLive { preroll = []; gate = makeGate() }
         if !gate.isOpen { beginUtterance() }
         handleMode = true
@@ -611,7 +629,9 @@ final class AppController {
     private func shakeCancel() {
         guard settings.shakeToCancel else { return }
         Log.write("shake: cancel")
-        DispatchQueue.main.async { self.canceled = true; self.hud.canceled() }
+        let serial = utteranceSerial
+        canceled = true
+        DispatchQueue.main.async { self.canceledSerials.insert(serial); self.hud.canceled() }
     }
 
     private func usbEvent(_ event: MicSerial.Event) {
@@ -726,7 +746,7 @@ final class AppController {
     }
 
     /// Claude's text when it has any, otherwise Apple's. Both are logged so the two can be compared.
-    private func pick(apple: UtteranceResult, claude: Result<String, ClaudeDictation.Failure>?) -> UtteranceResult {
+    private func pick(apple: UtteranceResult, claude: Result<String, ClaudeDictation.Failure>?, serial: Int) -> UtteranceResult {
         DispatchQueue.main.async { self.claudeLive = false }
         guard let claude else { return apple }
         let appleLine = String(format: "apple [%@ %.2f]: %@", apple.locale, apple.confidence, apple.text.isEmpty ? "(empty)" : apple.text)
@@ -736,6 +756,7 @@ final class AppController {
             return UtteranceResult(text: text, locale: "claude", confidence: 1, alternatives: [])
         case .success:
             Log.write("compare: claude: (empty), using Apple's | \(appleLine)")
+            dictation.complete(serial: serial, action: .discard) { _ in }    // nothing of Claude's to deliver
         case .failure(let error):
             Log.write("compare: claude failed (\(error)), using Apple's | \(appleLine)")
         }
@@ -748,11 +769,10 @@ final class AppController {
         // Text dictated in Claude goes back to the session it was spoken into.
         let dictatedIn = dictatedSession.removeValue(forKey: serial)
         let inComposer = result.locale == "claude"      // Claude's dictation left this text in the composer
-        if canceled {
+        if canceledSerials.remove(serial) != nil {
             Log.write("canceled: \(result.text)")
             if inComposer { dictation.complete(serial: serial, action: .discard) { _ in } }
-            canceled = false
-            hud.hide(after: 0.3)   // the tap already flashed "Canceled"
+            if activeSqueeze == nil { hud.hide(after: 0.3) }   // the shake already showed "Canceled"
             return
         }
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -760,7 +780,7 @@ final class AppController {
         guard letters >= 2, speechSeconds >= 0.4, result.confidence >= 0.35 else {
             Log.write(String(format: "dropped: %@ (%.1fs speech, conf %.2f)", text.isEmpty ? "empty" : text, speechSeconds, result.confidence))
             if inComposer { dictation.complete(serial: serial, action: .discard) { _ in } }
-            hud.hide(after: 0.2)
+            if activeSqueeze == nil { hud.hide(after: 0.2) }
             return
         }
         let intent = intents.removeValue(forKey: serial) ?? .send
@@ -815,7 +835,7 @@ final class AppController {
         recent.insert((Date(), text, outcome), at: 0)
         if recent.count > 12 { recent.removeLast() }
         lastActivity = Date()
-        hud.sent(text, outcome: outcome, title: hudTitle)
+        if activeSqueeze == nil { hud.sent(text, outcome: outcome, title: hudTitle) }
         onRecentChange?()
     }
 
@@ -855,7 +875,7 @@ final class AppController {
             self.recent.insert((Date(), text, outcome), at: 0)
             if self.recent.count > 12 { self.recent.removeLast() }
             self.lastActivity = Date()
-            self.hud.sent(text, outcome: outcome, title: title)
+            if self.activeSqueeze == nil { self.hud.sent(text, outcome: outcome, title: title) }
             self.onRecentChange?()
         }
     }
@@ -900,7 +920,7 @@ final class AppController {
         do {
             try ComposerDelivery.send(item.text, toSessionTitled: item.target, pressSend: !expired)
             Log.write("queue: \(expired ? "waited 30 min, left as draft in" : "sent to") \(item.target): \(item.text)")
-            hud.sent(item.text, outcome: "", title: expired ? "Queued item left as draft" : "Sent queued message")
+            if activeSqueeze == nil { hud.sent(item.text, outcome: "", title: expired ? "Queued item left as draft" : "Sent queued message") }
         } catch {
             Log.write("queue: send failed (\(error)), copied to the clipboard: \(item.text)")
             NSPasteboard.general.clearContents()

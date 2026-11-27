@@ -51,8 +51,17 @@ final class ClaudeDictation {
 
     /// Switches to the target session, presses the dictation button, and reports when Claude is listening, with the
     /// title of the session it is listening in (the one on screen when the target could not be shown).
-    func start(serial: Int, target: String?, onStarted: @escaping (Result<String, Failure>) -> Void) {
+    func start(serial: Int, target: String?, attempt: Int = 0, onStarted: @escaping (Result<String, Failure>) -> Void) {
         queue.async { [self] in
+            // The last squeeze's text is still in the composer waiting to be sent, queued, kept or removed: let that
+            // finish first (up to 3 s), so the two messages never mix.
+            if finished != nil, attempt < 30 {
+                queue.asyncAfter(deadline: .now() + 0.1) {
+                    self.start(serial: serial, target: target, attempt: attempt + 1, onStarted: onStarted)
+                }
+                return
+            }
+            if attempt >= 30 { Log.write("dictation: the last squeeze was never completed, starting anyway") }
             stopPolling()
             run = nil
             finished = nil
@@ -135,12 +144,25 @@ final class ClaudeDictation {
         }
     }
 
+    private var dictationLabels: [String] { Settings.shared.dictationButtonLabels.map { $0.lowercased() } }
+
     private func end(_ r: inout Run) -> String {
         let pressedAt = Date()
         if let button = button(at: r.buttonCenter, in: r.window) {
             let l = label(button)
-            if AXUIElementPerformAction(button, kAXPressAction as CFString) != .success { Log.write("dictation: stop press failed on \"\(l)\"") }
-            else { Log.write("dictation: pressed \"\(l)\" to finish") }
+            // Press only the dictation control, and only while it is listening: a control that moved there, or a
+            // dictation Claude already stopped (a press would start it again), is left alone.
+            let lower = l.lowercased()
+            let isDictation = lower.contains("dictat") || dictationLabels.contains { lower.contains($0) }
+            if !isDictation {
+                Log.write("dictation: the control at the dictation button's place is \"\(l)\", not pressed")
+            } else if r.labelChanged, l == r.idleLabel {
+                Log.write("dictation: Claude had already stopped listening, not pressed")
+            } else if AXUIElementPerformAction(button, kAXPressAction as CFString) != .success {
+                Log.write("dictation: stop press failed on \"\(l)\"")
+            } else {
+                Log.write("dictation: pressed \"\(l)\" to finish")
+            }
         } else {
             Log.write("dictation: button gone at finish")
         }
